@@ -1,0 +1,734 @@
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kusto Query Language (KQL) Cheatsheet</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0.5in;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 10px;
+            line-height: 1.3;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            background: white;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #0078d4, #106ebe);
+            color: white;
+            padding: 15px;
+            text-align: center;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .header p {
+            margin: 5px 0 0 0;
+            font-size: 12px;
+            opacity: 0.9;
+        }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 10px;
+            break-inside: avoid;
+        }
+        
+        .section h2 {
+            background: #0078d4;
+            color: white;
+            margin: -10px -10px 10px -10px;
+            padding: 8px 10px;
+            font-size: 12px;
+            font-weight: bold;
+            border-radius: 6px 6px 0 0;
+        }
+        
+        .section h3 {
+            color: #0078d4;
+            font-size: 11px;
+            margin: 10px 0 5px 0;
+            border-bottom: 1px solid #0078d4;
+            padding-bottom: 2px;
+        }
+        
+        .code {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 9px;
+            margin: 3px 0;
+            overflow-x: auto;
+        }
+        
+        .code .keyword {
+            color: #63b3ed;
+            font-weight: bold;
+        }
+        
+        .code .string {
+            color: #68d391;
+        }
+        
+        .code .comment {
+            color: #a0aec0;
+            font-style: italic;
+        }
+        
+        .example {
+            background: #f0f8ff;
+            border-left: 3px solid #0078d4;
+            padding: 6px 8px;
+            margin: 5px 0;
+            font-size: 9px;
+        }
+        
+        .tip {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 6px 8px;
+            margin: 5px 0;
+            font-size: 9px;
+        }
+        
+        .tip::before {
+            content: "💡 ";
+            font-weight: bold;
+        }
+        
+        .operator-grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 5px;
+            margin: 5px 0;
+        }
+        
+        .operator {
+            background: #e3f2fd;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 9px;
+        }
+        
+        .description {
+            padding: 3px 6px;
+            font-size: 9px;
+        }
+        
+        .visual-chart {
+            background: linear-gradient(45deg, #f0f8ff, #e6f3ff);
+            border: 2px solid #0078d4;
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+            margin: 10px 0;
+        }
+        
+        .workflow-step {
+            background: #e8f5e8;
+            border: 1px solid #4caf50;
+            border-radius: 20px;
+            padding: 5px 10px;
+            margin: 3px;
+            display: inline-block;
+            font-size: 9px;
+        }
+        
+        .arrow {
+            color: #0078d4;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .performance-indicator {
+            background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcf7f);
+            height: 8px;
+            border-radius: 4px;
+            margin: 5px 0;
+        }
+        
+        .icon {
+            font-size: 16px;
+            margin-right: 5px;
+        }
+        
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .two-column {
+            grid-column: span 2;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 8px;
+            margin: 5px 0;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 4px;
+            text-align: left;
+        }
+        
+        th {
+            background: #0078d4;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .print-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 1000;
+        }
+        
+        @media print {
+            .print-button {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+   
+    <div class="header">
+        <h1>🔍 Kustonaut's KQL Cheatsheet</h1>
+        <p>A quick reference to Kuto Query Language for Eventhouse in Real-Time Intelligence, Azure Data Explorer (ADX), Azure Monitor, and Microsoft Security solutions.</p>
+        <div style="font-size: 12px; color: #222; padding: 6px; ">📝 Compiled by: <a href="https://www.linkedin.com/in/dixitakshay/" target="_blank">Akshay Dixit (kustonaut)</a> | 💻 Source Code: <a href="http://aka.ms/kustonautKQLcheatsheet" target="_blank">http://aka.ms/kustonautKQLcheatsheet</a></div>
+     </div>
+    
+    <!-- Introduction Section -->
+    <div class="section full-width" style="margin-bottom: 20px;">
+        <h2>📖 Introduction</h2>
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+            <div>
+                <p><strong>Kusto Query Language (KQL)</strong> is Microsoft's powerful open-source query language designed for analyzing large volumes of structured, semi-structured, and unstructured data. Originally developed for internal Microsoft use and released publically with Azure Data Explorer, KQL is now the standard query language across Microsoft's analytics, security and monitoring ecosystem.</p>
+                
+                <h3>🎯 Where KQL is used?</h3>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li><strong>Eventhouse in Real-time Analytics</strong> - Lightening fast analytics on streaming data</li>
+                    <li><strong>Azure Data Explorer</strong> - Big data log analytics platform</li>
+                    <li><strong>Azure Monitor</strong> - Application and infrastructure monitoring</li>
+                    <li><strong>Microsoft Sentinel</strong> - Security information and event management</li>
+                    <li><strong>Azure Resource Graph</strong> - Azure resource management</li>
+                    <li><strong>Application Insights</strong> - Application performance monitoring</li>
+                    <li><strong>Log Analytics</strong> - Centralized log data analysis</li>
+                </ul>
+                
+                <h3>🚀 Why KQL in the era of Artificial Intelligence</h3>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li><strong>Scale</strong> - Handle petabytes of data with sub-second response times</li>
+                    <li><strong>Flexibility</strong> - Works with structured, semi-structured, and unstructured data</li>
+                    <li><strong>Integration</strong> - Native integration with Microsoft's AI and ML services</li>
+                    <li><strong>Visualization</strong> - Built-in charting, graph analytics and dashboard capabilities</li>
+                </ul>
+            </div>
+            <div>
+                <div class="visual-chart">
+                    <h3>📊 KQL Data Flow</h3>
+                    <div style="text-align: center; margin: 10px 0;">
+                        <div class="workflow-step">Raw Data</div>
+                        <div class="arrow">↓</div>
+                        <div class="workflow-step">KQL Query</div>
+                        <div class="arrow">↓</div>
+                        <div class="workflow-step">Processed Results</div>
+                        <div class="arrow">↓</div>
+                        <div class="workflow-step">Insights & Actions</div>
+                    </div>
+                </div>
+                <div class="tip">
+                    <strong>Learning Path:</strong> Start with basic filtering and aggregation, then progress to joins and advanced analytics functions.
+                </div>
+            </div>
+        </div>
+        
+        <div style="background: #e8f5e8; border: 1px solid #4caf50; border-radius: 6px; padding: 10px; margin-top: 15px;">
+            <h3>📚 Official Documentation</h3>
+            <p style="margin: 5px 0;"><strong>Primary Resource:</strong> <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/" target="_blank">https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/</a></p>
+            <p style="margin: 5px 0;"><strong>KQL Tutorial:</strong> <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/tutorial" target="_blank">https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/tutorial</a></p>
+            <p style="margin: 5px 0;"><strong>Best Practices:</strong> <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/best-practices" target="_blank">https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/best-practices</a></p>
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- Basic Structure -->
+    <div class="section full-width" style="margin-bottom: 10px;">
+            <h2>📋 Basic Structure</h2>
+            <div class="visual-chart">
+                <div class="workflow-step">Data Source</div>
+                <span class="arrow">→</span>
+                <div class="workflow-step">Operators</div>
+                <span class="arrow">→</span>
+                <div class="workflow-step">Result</div>
+            </div>
+            <div class="code">
+<span class="keyword">TableName</span>
+| <span class="keyword">where</span> <span class="string">condition</span>
+| <span class="keyword">project</span> <span class="string">columns</span>
+| <span class="keyword">take</span> <span class="string">10</span>
+            </div>
+            <div class="tip">Always start with a table name, then chain operators with " | " (pipe operator) </div>
+        </div>
+        
+        <!-- Essential Operators -->
+        <div class="section full-width">
+            <h2>🔧 Essential Operators</h2>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                <div>
+                    <h3>🔍 where</h3>
+                    <p style="font-size: 9px; margin: 3px 0;">Filters rows based on specified conditions. Most important operator for performance.</p>
+                    <div class="code">TableName | <span class="keyword">where</span> Column == <span class="string">"Value"</span></div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/whereoperator" target="_blank">Official Docs</a></div>
+                </div>
+                
+                <div>
+                    <h3>📋 project</h3>
+                    <p style="font-size: 9px; margin: 3px 0;">Selects specific columns and can create computed columns. Reduces data volume.</p>
+                    <div class="code">| <span class="keyword">project</span> Name, Age, City</div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/projectoperator" target="_blank">Official Docs</a></div>
+                </div>
+                
+                <div>
+                    <h3>🎯 take</h3>
+                    <p style="font-size: 9px; margin: 3px 0;">Limits the number of rows returned. Useful for sampling and testing queries.</p>
+                    <div class="code">| <span class="keyword">take</span> <span class="string">100</span></div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/takeoperator" target="_blank">Official Docs</a></div>
+                </div>
+                
+                <div>
+                    <h3>🔢 count</h3>
+                    <p style="font-size: 9px; margin: 3px 0;">Returns the number of rows in the input table. Essential for metrics.</p>
+                    <div class="code">| <span class="keyword">count</span></div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/countoperator" target="_blank">Official Docs</a></div>
+                </div>
+                
+                <div>
+                    <h3>📊 summarize</h3>
+                    <p style="font-size: 9px; margin: 3px 0;">Groups rows and applies aggregation functions. Core operator for analytics.</p>
+                    <div class="code">| <span class="keyword">summarize</span> <span class="keyword">count</span>() <span class="keyword">by</span> Category</div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/summarizeoperator" target="_blank">Official Docs</a></div>
+                </div>
+                
+                <div>
+                    <h3>🔄 sort</h3>
+                    <p style="font-size: 9px; margin: 3px 0;">Orders rows by one or more columns. Alias: order by.</p>
+                    <div class="code">| <span class="keyword">sort</span> <span class="keyword">by</span> Timestamp <span class="keyword">desc</span></div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/sortoperator" target="_blank">Official Docs</a></div>
+                </div>
+                
+                <div>
+                    <h3>➕ extend</h3>
+                    <p style="font-size: 9px; margin: 3px 0;">Adds calculated columns to the result set. Preserves original columns.</p>
+                    <div class="code">| <span class="keyword">extend</span> NewColumn = Column1 + Column2</div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/extendoperator" target="_blank">Official Docs</a></div>
+                </div>
+                
+                <div>
+                    <h3>🔗 join</h3>
+                    <p style="font-size: 9px; margin: 3px 0;">Combines rows from two tables based on matching values. Multiple join types available.</p>
+                    <div class="code">| <span class="keyword">join</span> (Table2) <span class="keyword">on</span> CommonColumn</div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/joinoperator" target="_blank">Official Docs</a></div>
+                </div>
+                
+                <div>
+                    <h3>🎭 distinct</h3>
+                    <p style="font-size: 9px; margin: 3px 0;">Returns unique combinations of specified columns. Removes duplicates.</p>
+                    <div class="code">| <span class="keyword">distinct</span> Column1, Column2</div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/distinctoperator" target="_blank">Official Docs</a></div>
+                </div>
+                
+                <div>
+                    <h3>🏆 top</h3>
+                    <p style="font-size: 9px; margin: 3px 0;">Returns the top N rows sorted by specified columns. Combines sort and take.</p>
+                    <div class="code">| <span class="keyword">top</span> <span class="string">10</span> <span class="keyword">by</span> Count <span class="keyword">desc</span></div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/topoperator" target="_blank">Official Docs</a></div>
+                </div>
+                
+                <div>
+                    <h3>🔀 union</h3>
+                    <p style="font-size: 9px; margin: 3px 0;">Combines rows from multiple tables. Tables must have compatible schemas.</p>
+                    <div class="code"><span class="keyword">union</span> Table1, Table2</div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/unionoperator" target="_blank">Official Docs</a></div>
+                </div>
+                
+                <div>
+                    <h3>🎨 render</h3>
+                    <p style="font-size: 9px; margin: 3px 0;">Visualizes query results as charts. Multiple chart types supported.</p>
+                    <div class="code">| <span class="keyword">render</span> <span class="keyword">timechart</span></div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/renderoperator" target="_blank">Official Docs</a></div>
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        
+        <!-- Time Functions -->
+        <div class="section">
+            <h2>⏰ Time Functions</h2>
+            <div class="code">
+<span class="comment">// Time ranges</span>
+<span class="keyword">where</span> TimeGenerated > <span class="keyword">ago</span>(<span class="string">1h</span>)
+<span class="keyword">where</span> TimeGenerated > <span class="keyword">now</span>(-<span class="string">1d</span>)
+<span class="keyword">where</span> TimeGenerated <span class="keyword">between</span>(<span class="string">datetime(2024-01-01) .. datetime(2024-01-02)</span>)
+            </div>
+            <div class="code">
+<span class="comment">// Time formatting</span>
+<span class="keyword">extend</span> Hour = <span class="keyword">bin</span>(TimeGenerated, <span class="string">1h</span>)
+<span class="keyword">extend</span> Date = <span class="keyword">format_datetime</span>(TimeGenerated, <span class="string">'yyyy-MM-dd'</span>)
+            </div>
+            <div style="font-size: 8px; color: #666; margin: 5px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/agofunction" target="_blank">ago()</a> | <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/nowfunction" target="_blank">now()</a> | <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/binfunction" target="_blank">bin()</a> | <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/format-datetimefunction" target="_blank">format_datetime()</a></div>
+        </div>
+        
+        <!-- Filtering -->
+        <div class="section">
+            <h2>🔍 Filtering Patterns</h2>
+            <h3>String Operations</h3>
+            <div class="code">
+<span class="keyword">where</span> Name <span class="keyword">contains</span> <span class="string">"error"</span>
+<span class="keyword">where</span> Name <span class="keyword">startswith</span> <span class="string">"App"</span>
+<span class="keyword">where</span> Name <span class="keyword">endswith</span> <span class="string">".exe"</span>
+<span class="keyword">where</span> Name <span class="keyword">matches regex</span> <span class="string">@"[0-9]+"</span>
+            </div>
+            <h3>Numeric & Lists</h3>
+            <div class="code">
+<span class="keyword">where</span> Status <span class="keyword">in</span> (<span class="string">"Success", "Warning"</span>)
+<span class="keyword">where</span> Count <span class="keyword">between</span> (<span class="string">10 .. 100</span>)
+<span class="keyword">where</span> isnotnull(Field)
+            </div>
+            <div style="font-size: 8px; color: #666; margin: 5px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/containsoperator" target="_blank">contains</a> | <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/startswithoperator" target="_blank">startswith</a> | <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/inoperator" target="_blank">in operator</a> | <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/betweenoperator" target="_blank">between</a></div>
+        </div>
+        
+        <!-- Aggregations -->
+        <div class="section">
+            <h2>📊 Aggregations</h2>
+            <div class="code">
+<span class="comment">// Basic aggregations</span>
+| <span class="keyword">summarize</span> 
+    <span class="keyword">count</span>(),
+    <span class="keyword">sum</span>(Amount),
+    <span class="keyword">avg</span>(Duration),
+    <span class="keyword">max</span>(Timestamp),
+    <span class="keyword">min</span>(Size)
+  <span class="keyword">by</span> Category
+            </div>
+            <div class="code">
+<span class="comment">// Advanced aggregations</span>
+| <span class="keyword">summarize</span> 
+    <span class="keyword">percentile</span>(Duration, <span class="string">95</span>),
+    <span class="keyword">dcount</span>(UserId),
+    <span class="keyword">countif</span>(Status == <span class="string">"Error"</span>)
+  <span class="keyword">by</span> <span class="keyword">bin</span>(TimeGenerated, <span class="string">1h</span>)
+            </div>
+        </div>
+        
+        <!-- Joins -->
+        <div class="section">
+            <h2>🔗 Joins</h2>
+            <div class="visual-chart">
+                <div style="display: flex; justify-content: space-between; font-size: 9px;">
+                    <div>📊 Table A</div>
+                    <div>🔗 Join</div>
+                    <div>📊 Table B</div>
+                </div>
+            </div>
+            <div class="code">
+<span class="comment">// Inner join</span>
+Table1
+| <span class="keyword">join</span> (Table2) <span class="keyword">on</span> CommonField
+
+<span class="comment">// Left join</span>
+Table1
+| <span class="keyword">join</span> <span class="keyword">kind</span>=<span class="string">leftouter</span> (Table2) <span class="keyword">on</span> CommonField
+
+<span class="comment">// Join with conditions</span>
+Table1
+| <span class="keyword">join</span> (Table2 | <span class="keyword">where</span> Active == <span class="string">true</span>) <span class="keyword">on</span> $left.ID == $right.UserID
+            </div>
+        </div>
+        
+        <!-- String Functions -->
+        <div class="section">
+            <h2>📝 String Functions</h2>
+            <div class="code">
+<span class="keyword">extend</span> 
+    Upper = <span class="keyword">toupper</span>(Name),
+    Lower = <span class="keyword">tolower</span>(Name),
+    Length = <span class="keyword">strlen</span>(Message),
+    Split = <span class="keyword">split</span>(Path, <span class="string">"/"</span>),
+    Extract = <span class="keyword">extract</span>(<span class="string">@"(\d+)"</span>, <span class="string">1</span>, Text),
+    Replace = <span class="keyword">replace</span>(<span class="string">@"\s+"</span>, <span class="string">" "</span>, Text),
+    Trim = <span class="keyword">trim</span>(<span class="string">" "</span>, Text)
+            </div>
+            <div style="font-size: 8px; color: #666; margin: 5px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/toupperfunction" target="_blank">toupper()</a> | <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/strlenfunction" target="_blank">strlen()</a> | <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/splitfunction" target="_blank">split()</a> | <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/extractfunction" target="_blank">extract()</a></div>
+        </div>
+        
+        <!-- Advanced Operators -->
+        <div class="section">
+            <h2>🚀 Advanced Operators</h2>
+            <h3>🔀 union & distinct</h3>
+            <div class="code">
+<span class="keyword">union</span> Table1, Table2
+| <span class="keyword">distinct</span> Column1, Column2
+            </div>
+            <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/unionoperator" target="_blank">union docs</a> | <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/distinctoperator" target="_blank">distinct docs</a></div>
+            
+            <h3>🪟 Window Functions</h3>
+            <div class="code">
+| <span class="keyword">extend</span> RowNumber = <span class="keyword">row_number</span>()
+| <span class="keyword">extend</span> RunningSum = <span class="keyword">row_cumsum</span>(Amount)
+            </div>
+            <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/row-number-function" target="_blank">row_number docs</a> | <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/row-cumsum-function" target="_blank">row_cumsum docs</a></div>
+            
+            <h3>🔀 Conditional Logic</h3>
+            <div class="code">
+| <span class="keyword">extend</span> Category = <span class="keyword">case</span>(
+    Value > <span class="string">100</span>, <span class="string">"High"</span>,
+    Value > <span class="string">50</span>, <span class="string">"Medium"</span>,
+    <span class="string">"Low"</span>)
+            </div>
+            <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/casefunction" target="_blank">case function docs</a></div>
+            
+            <h3>🔄 mv-expand</h3>
+            <div class="code">
+| <span class="keyword">mv-expand</span> ArrayColumn
+            </div>
+            <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/mvexpandoperator" target="_blank">mv-expand docs</a></div>
+            
+            <h3>🎯 evaluate</h3>
+            <div class="code">
+| <span class="keyword">evaluate</span> <span class="keyword">pivot</span>(Status, <span class="keyword">count</span>(), Category)
+            </div>
+            <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/pivotplugin" target="_blank">pivot plugin docs</a></div>
+        </div>
+        
+        
+        
+        <!-- Performance Tips -->
+        
+        
+        <div class="section full-width">
+          
+            <h2>⚡ Performance Optimization</h2>
+            <div class="performance-indicator"></div>
+            <table>
+                <tr>
+                    <th>🎯 Strategy</th>
+                    <th>📝 Implementation</th>
+                    <th>💡 Impact</th>
+                </tr>
+                <tr>
+                    <td>Early Filtering</td>
+                    <td>Put <code>where</code> clauses first</td>
+                    <td>Reduces data processed</td>
+                </tr>
+                <tr>
+                    <td>Time Range Limits</td>
+                    <td>Use <code>ago()</code> for recent data</td>
+                    <td>Leverages time indexing</td>
+                </tr>
+                <tr>
+                    <td>Column Selection</td>
+                    <td>Use <code>project</code> early</td>
+                    <td>Reduces memory usage</td>
+                </tr>
+                <tr>
+                    <td>Efficient Joins</td>
+                    <td>Join smaller tables first</td>
+                    <td>Minimizes computation</td>
+                </tr>
+                <tr>
+                    <td>Avoid Wildcards</td>
+                    <td>Use <code>contains</code> instead of <code>*</code></td>
+                    <td>Better index usage</td>
+                </tr>
+            </table>
+        </div>
+        
+        <!-- Common Patterns -->
+        <div class="section two-column">
+            <h2>🎯 Common Patterns</h2>
+            <h3>📈 Top N Analysis</h3>
+            <div class="code">
+| <span class="keyword">summarize</span> Total = <span class="keyword">count</span>() <span class="keyword">by</span> Category
+| <span class="keyword">top</span> <span class="string">10</span> <span class="keyword">by</span> Total <span class="keyword">desc</span>
+            </div>
+            
+            <h3>📊 Time Series Analysis</h3>
+            <div class="code">
+| <span class="keyword">summarize</span> Count = <span class="keyword">count</span>() 
+  <span class="keyword">by</span> <span class="keyword">bin</span>(TimeGenerated, <span class="string">1h</span>)
+| <span class="keyword">render</span> <span class="keyword">timechart</span>
+            </div>
+            
+            <h3>🔍 Error Rate Calculation</h3>
+            <div class="code">
+| <span class="keyword">summarize</span> 
+    Total = <span class="keyword">count</span>(),
+    Errors = <span class="keyword">countif</span>(Status == <span class="string">"Error"</span>)
+| <span class="keyword">extend</span> ErrorRate = <span class="keyword">todouble</span>(Errors) / Total * <span class="string">100</span>
+            </div>
+            
+            <h3>🔄 Pivot Operations</h3>
+            <div class="code">
+| <span class="keyword">evaluate</span> <span class="keyword">pivot</span>(Status, <span class="keyword">count</span>(), Category)
+            </div>
+        </div>
+        
+        <!-- Security Queries -->
+        <div class="section">
+            <h2>🔐 Security Queries</h2>
+            <div class="code">
+<span class="comment">// Failed logins</span>
+SigninLogs
+| <span class="keyword">where</span> ResultType != <span class="string">"0"</span>
+| <span class="keyword">summarize</span> <span class="keyword">count</span>() <span class="keyword">by</span> UserPrincipalName
+| <span class="keyword">top</span> <span class="string">10</span> <span class="keyword">by</span> count_
+            </div>
+            <div class="code">
+<span class="comment">// Suspicious activities</span>
+SecurityEvent
+| <span class="keyword">where</span> EventID <span class="keyword">in</span> (<span class="string">4625, 4648, 4719</span>)
+| <span class="keyword">summarize</span> <span class="keyword">count</span>() <span class="keyword">by</span> Account, Computer
+            </div>
+        </div>
+        
+          
+        
+        <!-- Visualization -->
+          <div class="section full-width" style="margin-bottom: 5px;">
+            <h2>📊 Visualization</h2>
+            <div class="code">
+<span class="comment">// Chart types</span>
+| <span class="keyword">render</span> <span class="keyword">timechart</span>
+| <span class="keyword">render</span> <span class="keyword">piechart</span>
+| <span class="keyword">render</span> <span class="keyword">barchart</span>
+| <span class="keyword">render</span> <span class="keyword">columnchart</span>
+| <span class="keyword">render</span> <span class="keyword">scatterchart</span>
+            </div>
+            <div class="example">
+                Example: Daily user activity trend
+                <div class="code">
+Users | <span class="keyword">summarize</span> <span class="keyword">count</span>() <span class="keyword">by</span> <span class="keyword">bin</span>(TimeGenerated, <span class="string">1d</span>) | <span class="keyword">render</span> <span class="keyword">timechart</span>
+                </div>
+            </div>
+        </div>
+        
+
+        <!-- Quick Reference -->
+        <div class="section full-width">
+            <h2>🚀 Quick Reference</h2>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+                <div>
+                    <h3>🔤 Data Types</h3>
+                    <div class="code">
+<span class="keyword">bool</span>, <span class="keyword">int</span>, <span class="keyword">long</span>, <span class="keyword">real</span>
+<span class="keyword">string</span>, <span class="keyword">datetime</span>
+<span class="keyword">timespan</span>, <span class="keyword">guid</span>
+<span class="keyword">dynamic</span> (JSON)
+                    </div>
+                </div>
+                <div>
+                    <h3>📅 Time Literals</h3>
+                    <div class="code">
+<span class="string">1d</span> = 1 day
+<span class="string">1h</span> = 1 hour  
+<span class="string">1m</span> = 1 minute
+<span class="string">1s</span> = 1 second
+<span class="string">1ms</span> = 1 millisecond
+                    </div>
+                </div>
+                <div>
+                    <h3>🧮 Math Functions</h3>
+                    <div class="code">
+<span class="keyword">abs</span>(), <span class="keyword">ceil</span>(), <span class="keyword">floor</span>()
+<span class="keyword">round</span>(), <span class="keyword">sqrt</span>(), <span class="keyword">pow</span>()
+<span class="keyword">log</span>(), <span class="keyword">exp</span>(), <span class="keyword">pi</span>()
+                    </div>
+                </div>
+                <div>
+                    <h3>🔄 Array Functions</h3>
+                    <div class="code">
+<span class="keyword">array_length</span>()
+<span class="keyword">array_slice</span>()
+<span class="keyword">array_concat</span>()
+<span class="keyword">mv-expand</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="section full-width" style="text-align: center; background: #f0f8ff; border: 2px solid #0078d4;">
+            <h2>🎯 Pro Tips for AI Product Managers</h2>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 10px;">
+                <div class="tip">
+                    <strong>Data-Driven Decisions:</strong> Use KQL to analyze user behavior patterns, feature adoption rates, and performance metrics to inform product roadmap decisions.
+                </div>
+                <div class="tip">
+                    <strong>Incident Response:</strong> Master time-based queries to quickly identify and analyze system anomalies, user impact, and service degradation patterns.
+                </div>
+                <div class="tip">
+                    <strong>User Insights:</strong> Combine multiple data sources with joins to create comprehensive user journey analytics and identify optimization opportunities.
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Add some interactivity for better user experience
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add click-to-copy functionality for code blocks
+            document.querySelectorAll('.code').forEach(function(codeBlock) {
+                codeBlock.style.cursor = 'pointer';
+                codeBlock.title = 'Click to copy';
+                codeBlock.addEventListener('click', function() {
+                    navigator.clipboard.writeText(this.textContent.trim());
+                    this.style.background = '#4a5568';
+                    setTimeout(() => {
+                        this.style.background = '#2d3748';
+                    }, 200);
+                });
+            });
+            
+            // Add smooth scrolling for better navigation
+            document.body.style.scrollBehavior = 'smooth';
+        });
+    </script>
+</body>
+</html>
