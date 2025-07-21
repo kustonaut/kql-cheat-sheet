@@ -45,10 +45,15 @@ graph TD
 - [Advanced Patterns](#advanced-patterns)
 - [Performance Tips](#performance-tips)
 - [Real Time Intelligence Specific](#real-time-intelligence-specific)
+- [Security & Threat Hunting](#security--threat-hunting)
+- [Community Queries](#community-queries)
 
 ## Basic Syntax
 
 ### Table Selection and Basic Filtering
+
+> 📚 **Documentation**: [`where` operator](https://docs.microsoft.com/azure/data-explorer/kusto/query/whereoperator) | [Query fundamentals](https://docs.microsoft.com/azure/data-explorer/kusto/query/tutorial)
+
 ```kql
 // Basic table query
 TableName
@@ -67,6 +72,8 @@ TableName
 ```
 
 ### Common Projections
+
+> 📚 **Documentation**: [`project` operator](https://docs.microsoft.com/azure/data-explorer/kusto/query/projectoperator) | [`extend` operator](https://docs.microsoft.com/azure/data-explorer/kusto/query/extendoperator)
 ```kql
 // Select specific columns
 TableName
@@ -105,6 +112,8 @@ mindmap
 ```
 
 ### String Operations
+
+> 📚 **Documentation**: [String operators](https://docs.microsoft.com/azure/data-explorer/kusto/query/datatypes-string-operators) | [`extract()` function](https://docs.microsoft.com/azure/data-explorer/kusto/query/extractfunction) | [`split()` function](https://docs.microsoft.com/azure/data-explorer/kusto/query/splitfunction)
 ```kql
 // Contains (case-insensitive)
 | where Message contains "error"
@@ -188,6 +197,8 @@ mindmap
 ## Time Functions
 
 ### Time Ranges
+
+> 📚 **Documentation**: [`ago()` function](https://docs.microsoft.com/azure/data-explorer/kusto/query/agofunction) | [`bin()` function](https://docs.microsoft.com/azure/data-explorer/kusto/query/binfunction) | [Datetime/timespan arithmetic](https://docs.microsoft.com/azure/data-explorer/kusto/query/datetime-timespan-arithmetic)
 ```kql
 // Last hour
 | where TimeGenerated > ago(1h)
@@ -247,6 +258,8 @@ by EventLevel
 ```
 
 ## Joins
+
+> 📚 **Documentation**: [`join` operator](https://docs.microsoft.com/azure/data-explorer/kusto/query/joinoperator) | [Join flavors](https://docs.microsoft.com/azure/data-explorer/kusto/query/joinoperator#join-flavors) | [Join best practices](https://docs.microsoft.com/azure/data-explorer/kusto/query/best-practices#joins)
 
 ```mermaid
 graph LR
@@ -571,40 +584,42 @@ requests
 
 ## Common Functions Reference
 
+> 📚 **Documentation**: [KQL Function Reference](https://docs.microsoft.com/azure/data-explorer/kusto/query/scalarfunctions) | [String Functions](https://docs.microsoft.com/azure/data-explorer/kusto/query/scalarfunctions#string-functions) | [DateTime Functions](https://docs.microsoft.com/azure/data-explorer/kusto/query/scalarfunctions#date-and-time-functions)
+
 ### String Functions
-- `contains` - Case-insensitive substring search
-- `startswith` / `endswith` - String prefix/suffix check
-- `extract` - Regular expression extraction
-- `split` - Split string into array
-- `strlen` - String length
-- `substring` - Extract substring
-- `tolower` / `toupper` - Case conversion
+- [`contains`](https://docs.microsoft.com/azure/data-explorer/kusto/query/containsoperator) - Case-insensitive substring search
+- [`startswith` / `endswith`](https://docs.microsoft.com/azure/data-explorer/kusto/query/startswithoperator) - String prefix/suffix check
+- [`extract`](https://docs.microsoft.com/azure/data-explorer/kusto/query/extractfunction) - Regular expression extraction
+- [`split`](https://docs.microsoft.com/azure/data-explorer/kusto/query/splitfunction) - Split string into array
+- [`strlen`](https://docs.microsoft.com/azure/data-explorer/kusto/query/strlenfunction) - String length
+- [`substring`](https://docs.microsoft.com/azure/data-explorer/kusto/query/substringfunction) - Extract substring
+- [`tolower` / `toupper`](https://docs.microsoft.com/azure/data-explorer/kusto/query/tolowerfunction) - Case conversion
 
 ### Math Functions
-- `abs` - Absolute value
-- `round` - Round to specified decimals
-- `floor` / `ceiling` - Round down/up
-- `sqrt` - Square root
-- `pow` - Power function
-- `min` / `max` - Minimum/maximum
+- [`abs`](https://docs.microsoft.com/azure/data-explorer/kusto/query/abs-function) - Absolute value
+- [`round`](https://docs.microsoft.com/azure/data-explorer/kusto/query/roundfunction) - Round to specified decimals
+- [`floor` / `ceiling`](https://docs.microsoft.com/azure/data-explorer/kusto/query/floorfunction) - Round down/up
+- [`sqrt`](https://docs.microsoft.com/azure/data-explorer/kusto/query/sqrtfunction) - Square root
+- [`pow`](https://docs.microsoft.com/azure/data-explorer/kusto/query/powfunction) - Power function
+- [`min` / `max`](https://docs.microsoft.com/azure/data-explorer/kusto/query/min-aggfunction) - Minimum/maximum
 
 ### Date Functions
-- `now()` - Current timestamp
-- `ago()` - Time in the past
-- `datetime()` - Parse datetime
-- `format_datetime()` - Format timestamp
-- `bin()` - Time bucketing
-- `datetime_part()` - Extract date component
+- [`now()`](https://docs.microsoft.com/azure/data-explorer/kusto/query/nowfunction) - Current timestamp
+- [`ago()`](https://docs.microsoft.com/azure/data-explorer/kusto/query/agofunction) - Time in the past
+- [`datetime()`](https://docs.microsoft.com/azure/data-explorer/kusto/query/datetime-timespan-arithmetic) - Parse datetime
+- [`format_datetime()`](https://docs.microsoft.com/azure/data-explorer/kusto/query/format-datetimefunction) - Format timestamp
+- [`bin()`](https://docs.microsoft.com/azure/data-explorer/kusto/query/binfunction) - Time bucketing
+- [`datetime_part()`](https://docs.microsoft.com/azure/data-explorer/kusto/query/datetime-partfunction) - Extract date component
 
 ### Aggregation Functions
-- `count()` - Count rows
-- `dcount()` - Distinct count
-- `sum()` - Sum values
-- `avg()` - Average
-- `min()` / `max()` - Minimum/maximum
-- `percentile()` - Calculate percentile
-- `make_set()` - Create array of unique values
-- `make_list()` - Create array with duplicates
+- [`count()`](https://docs.microsoft.com/azure/data-explorer/kusto/query/count-aggfunction) - Count rows
+- [`dcount()`](https://docs.microsoft.com/azure/data-explorer/kusto/query/dcount-aggfunction) - Distinct count
+- [`sum()`](https://docs.microsoft.com/azure/data-explorer/kusto/query/sum-aggfunction) - Sum values
+- [`avg()`](https://docs.microsoft.com/azure/data-explorer/kusto/query/avg-aggfunction) - Average
+- [`min()` / `max()`](https://docs.microsoft.com/azure/data-explorer/kusto/query/min-aggfunction) - Minimum/maximum
+- [`percentile()`](https://docs.microsoft.com/azure/data-explorer/kusto/query/percentiles-aggfunction) - Calculate percentile
+- [`make_set()`](https://docs.microsoft.com/azure/data-explorer/kusto/query/makeset-aggfunction) - Create array of unique values
+- [`make_list()`](https://docs.microsoft.com/azure/data-explorer/kusto/query/makelist-aggfunction) - Create array with duplicates
 
 ---
 
@@ -649,4 +664,300 @@ requests
 
 ---
 
-*This cheat sheet is designed for Real Time Intelligence scenarios. For the latest KQL documentation, visit [Microsoft Docs](https://docs.microsoft.com/azure/data-explorer/kusto/query/).*
+## Security & Threat Hunting
+
+> 📚 **Documentation**: [Microsoft Sentinel KQL](https://docs.microsoft.com/azure/sentinel/kusto-overview) | [Advanced Security Information Model (ASIM)](https://docs.microsoft.com/azure/sentinel/normalization) | [Threat Hunting with KQL](https://docs.microsoft.com/azure/sentinel/hunting)
+
+```mermaid
+graph TB
+    subgraph "Security Analytics Pipeline"
+        A[🔒 Security Logs] --> B[📊 Normalization]
+        B --> C[🔍 Detection]
+        C --> D[🚨 Alerting]
+        
+        E[🌐 Network Logs] --> B
+        F[👤 Identity Logs] --> B
+        G[🖥️ Endpoint Logs] --> B
+        
+        C --> H[📈 Threat Intelligence]
+        C --> I[🕵️ Threat Hunting]
+        C --> J[📋 Incident Response]
+    end
+    
+    style A fill:#ffebee
+    style E fill:#e8f5e8
+    style F fill:#e3f2fd
+    style G fill:#fff3e0
+    style C fill:#f3e5f5
+    style H fill:#fce4ec
+```
+
+### Common Security Tables
+```kql
+// Microsoft Sentinel common tables
+SecurityEvent          // Windows Security Events
+Syslog                 // Linux/Unix Logs  
+CommonSecurityLog      // CEF formatted logs
+SecurityAlert          // Security alerts
+SecurityIncident       // Security incidents
+ThreatIntelligenceIndicator // Threat intel data
+
+// Microsoft 365 Defender
+DeviceEvents           // Endpoint detection and response
+DeviceLogonEvents      // Logon activities
+DeviceNetworkEvents    // Network connections
+DeviceFileEvents       // File system activities
+DeviceProcessEvents    // Process execution
+IdentityLogonEvents    // Identity logons
+EmailEvents           // Email security events
+```
+
+### Authentication Analysis
+```kql
+// Failed logon attempts
+SecurityEvent
+| where TimeGenerated > ago(24h)
+| where EventID == 4625  // Failed logon
+| summarize FailedAttempts = count() by Account, Computer, IpAddress
+| where FailedAttempts > 10
+| sort by FailedAttempts desc
+
+// Successful logons after failed attempts
+let FailedLogons = SecurityEvent
+    | where TimeGenerated > ago(1h)
+    | where EventID == 4625
+    | project TimeGenerated, Account, Computer, IpAddress;
+let SuccessfulLogons = SecurityEvent
+    | where TimeGenerated > ago(1h)
+    | where EventID == 4624
+    | project TimeGenerated, Account, Computer, IpAddress;
+FailedLogons
+| join kind=inner (SuccessfulLogons) on Account, Computer
+| where TimeGenerated1 < TimeGenerated
+| project Account, Computer, IpAddress, FailedTime=TimeGenerated, SuccessTime=TimeGenerated1
+```
+
+### Network Security Monitoring
+```kql
+// Suspicious outbound connections
+DeviceNetworkEvents
+| where TimeGenerated > ago(1h)
+| where ActionType == "ConnectionSuccess"
+| where RemotePort in (22, 3389, 5985, 5986)  // SSH, RDP, WinRM
+| where not(RemoteIP has_any ("10.", "192.168.", "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31."))
+| summarize count() by DeviceName, RemoteIP, RemotePort
+| sort by count_ desc
+
+// DNS queries to suspicious domains
+DeviceNetworkEvents
+| where TimeGenerated > ago(24h)
+| where ActionType == "DnsQueryResponse"
+| where RemoteUrl matches regex @".*\.(tk|ml|ga|cf)$"  // Suspicious TLDs
+| summarize count() by DeviceName, RemoteUrl
+| sort by count_ desc
+```
+
+### Process Execution Analysis
+```kql
+// PowerShell execution with obfuscation indicators
+DeviceProcessEvents
+| where TimeGenerated > ago(24h)
+| where FileName =~ "powershell.exe"
+| where ProcessCommandLine has_any ("-enc", "-encoded", "FromBase64String", "iex", "invoke-expression")
+| project TimeGenerated, DeviceName, AccountName, ProcessCommandLine
+| sort by TimeGenerated desc
+
+// Suspicious parent-child process relationships
+DeviceProcessEvents
+| where TimeGenerated > ago(24h)
+| where InitiatingProcessFileName in~ ("winword.exe", "excel.exe", "powerpnt.exe", "outlook.exe")
+| where FileName in~ ("powershell.exe", "cmd.exe", "wscript.exe", "cscript.exe", "regsvr32.exe")
+| project TimeGenerated, DeviceName, InitiatingProcessFileName, FileName, ProcessCommandLine
+```
+
+### File System Security
+```kql
+// Sensitive file access
+DeviceFileEvents
+| where TimeGenerated > ago(24h)
+| where FileName has_any ("password", "credential", "secret", "private", "key")
+| where ActionType in ("FileCreated", "FileModified", "FileRenamed")
+| summarize count() by DeviceName, AccountName, FileName, FolderPath
+| sort by count_ desc
+
+// Executable files written to temp directories
+DeviceFileEvents
+| where TimeGenerated > ago(24h)
+| where ActionType == "FileCreated"
+| where FileName endswith ".exe"
+| where FolderPath has_any ("temp", "tmp", "appdata\\local\\temp")
+| project TimeGenerated, DeviceName, AccountName, FileName, FolderPath, SHA256
+```
+
+### Threat Intelligence Integration
+```kql
+// IoC matching against network events
+let MaliciousIPs = ThreatIntelligenceIndicator
+    | where TimeGenerated > ago(7d)
+    | where isnotempty(NetworkIP)
+    | project NetworkIP, Description, ThreatType;
+DeviceNetworkEvents
+| where TimeGenerated > ago(24h)
+| join kind=inner (MaliciousIPs) on $left.RemoteIP == $right.NetworkIP
+| project TimeGenerated, DeviceName, RemoteIP, Description, ThreatType, ActionType
+```
+
+## Community Queries
+
+> 🙏 **Credits**: These queries are contributed by the cybersecurity community. Special thanks to the following sources and contributors:
+
+### Microsoft Security Community
+- **[Microsoft Sentinel Community](https://github.com/Azure/Azure-Sentinel)** - Official Microsoft Sentinel repository
+- **[KQL Search](https://www.kqlsearch.com/)** - Community-driven KQL query repository by @rod-trent
+- **[Microsoft 365 Defender Hunting Queries](https://github.com/microsoft/Microsoft-365-Defender-Hunting-Queries)** - Official hunting queries
+- **[Bert-JanP/Hunting-Queries-Detection-Rules](https://github.com/Bert-JanP/Hunting-Queries-Detection-Rules)** - Comprehensive hunting query collection
+
+### Notable Contributors
+- **Rod Trent** (@rod-trent) - KQL Search platform and extensive query contributions
+- **Bert-Jan Piet** (@Bert-JanP) - Threat hunting queries and detection rules
+- **Cyb3rWard0g** (@Cyb3rWard0g) - Advanced persistent threat hunting
+- **FalconForce** (@FalconForceTeam) - Purple team and threat hunting methodologies
+
+### Advanced Persistent Threat (APT) Hunting
+```kql
+// Living off the Land (LoL) techniques detection
+// Credit: Inspired by MITRE ATT&CK framework and community research
+DeviceProcessEvents
+| where TimeGenerated > ago(24h)
+| where FileName in~ (
+    "certutil.exe", "bitsadmin.exe", "wmic.exe", 
+    "rundll32.exe", "regsvr32.exe", "mshta.exe",
+    "installutil.exe", "regasm.exe", "regsvcs.exe"
+)
+| where ProcessCommandLine has_any (
+    "http", "https", "ftp", "download", 
+    "urlcache", "verifyctl", "encode", "decode"
+)
+| project TimeGenerated, DeviceName, AccountName, FileName, ProcessCommandLine
+| sort by TimeGenerated desc
+```
+
+### Supply Chain Attack Detection
+```kql
+// Suspicious software installation patterns
+// Credit: Community analysis of SolarWinds and similar attacks
+DeviceFileEvents
+| where TimeGenerated > ago(7d)
+| where ActionType == "FileCreated"
+| where FolderPath has_any ("system32", "syswow64", "program files")
+| where FileName endswith ".dll"
+| join kind=inner (
+    DeviceProcessEvents
+    | where InitiatingProcessFileName in~ ("msiexec.exe", "setup.exe", "install.exe")
+    | project DeviceId, InitiatingProcessCommandLine, TimeGenerated
+) on DeviceId
+| where abs(datetime_diff('minute', TimeGenerated, TimeGenerated1)) < 30
+| project TimeGenerated, DeviceName, FileName, FolderPath, InitiatingProcessCommandLine
+```
+
+### Ransomware Detection
+```kql
+// Rapid file encryption indicators
+// Credit: Analysis from various ransomware incident reports
+DeviceFileEvents
+| where TimeGenerated > ago(1h)
+| where ActionType in ("FileRenamed", "FileModified")
+| where FileName has_any (".encrypt", ".locked", ".crypto", ".crypt", ".enc")
+    or FileName matches regex @".*\.(jpg|pdf|doc|xls|ppt|png|gif|bmp|mp3|mp4|avi|mov|zip|rar|7z|txt|rtf)\..*"
+| summarize 
+    FileCount = count(),
+    UniqueExtensions = dcount(FileName),
+    FileTypes = make_set(FileName)
+by DeviceName, AccountName, bin(TimeGenerated, 5m)
+| where FileCount > 50  // High volume of file changes
+| sort by TimeGenerated desc
+```
+
+### Credential Access Hunting
+```kql
+// LSASS process access patterns
+// Credit: Security research on credential dumping techniques
+DeviceEvents
+| where TimeGenerated > ago(24h)
+| where ActionType == "ProcessAccess"
+| where FileName == "lsass.exe"
+| where InitiatingProcessFileName !in~ ("svchost.exe", "wininit.exe", "winlogon.exe", "csrss.exe")
+| summarize count() by DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine
+| sort by count_ desc
+```
+
+### Command and Control (C2) Detection
+```kql
+// Beaconing behavior detection
+// Credit: Network security research and threat hunting methodologies
+DeviceNetworkEvents
+| where TimeGenerated > ago(24h)
+| where ActionType == "ConnectionSuccess"
+| summarize 
+    ConnectionCount = count(),
+    UniqueRemotePorts = dcount(RemotePort),
+    AvgInterval = avg(prev(TimeGenerated) - TimeGenerated)
+by DeviceName, RemoteIP, bin(TimeGenerated, 1h)
+| where ConnectionCount > 10 and UniqueRemotePorts < 3
+| where AvgInterval between (time(0.1s) .. time(30m))  // Regular intervals
+| sort by ConnectionCount desc
+```
+
+### Data Exfiltration Detection
+```kql
+// Large data transfers to external destinations
+// Credit: Data loss prevention research and incident analysis
+DeviceNetworkEvents
+| where TimeGenerated > ago(24h)
+| where ActionType == "NetworkConnection"
+| where not(RemoteIP has_any ("10.", "192.168.", "172."))  // External IPs
+| summarize TotalBytes = sum(SentBytes) by DeviceName, RemoteIP, bin(TimeGenerated, 1h)
+| where TotalBytes > 100000000  // >100MB
+| sort by TotalBytes desc
+```
+
+### Persistence Mechanism Detection
+```kql
+// Registry-based persistence techniques
+// Credit: MITRE ATT&CK T1547 and community research
+DeviceRegistryEvents
+| where TimeGenerated > ago(24h)
+| where ActionType == "RegistryValueSet"
+| where RegistryKey has_any (
+    "\\Run\\", "\\RunOnce\\", "\\RunServices\\", 
+    "\\Winlogon\\", "\\Explorer\\Run\\",
+    "\\Image File Execution Options\\",
+    "\\AppInit_DLLs", "\\ServiceDLL"
+)
+| project TimeGenerated, DeviceName, AccountName, RegistryKey, RegistryValueName, RegistryValueData
+| sort by TimeGenerated desc
+```
+
+---
+
+### 🔍 Threat Hunting Resources
+
+#### Official Documentation
+- **[Microsoft Sentinel Hunting](https://docs.microsoft.com/azure/sentinel/hunting)** - Official hunting guide
+- **[MITRE ATT&CK Framework](https://attack.mitre.org/)** - Threat tactics and techniques
+- **[Microsoft 365 Defender Advanced Hunting](https://docs.microsoft.com/microsoft-365/security/defender/advanced-hunting-overview)**
+
+#### Community Resources
+- **[KQL Cafe](https://kqlcafe.github.io/)** - Interactive KQL learning platform
+- **[Azure Sentinel Notebooks](https://github.com/Azure/Azure-Sentinel-Notebooks)** - Jupyter notebooks for security analysis
+- **[Uncoder.io](https://uncoder.io/)** - Sigma rule to KQL converter
+- **[Sentinel ATT&CK](https://github.com/BlueTeamSecDev/SentinelAttack)** - MITRE ATT&CK aligned queries
+
+#### Training and Certification
+- **[Microsoft Security Operations Analyst](https://docs.microsoft.com/learn/certifications/security-operations-analyst/)** - SC-200 certification
+- **[KQL Pluralsight Course](https://www.pluralsight.com/courses/kusto-query-language-kql-from-scratch)** - Comprehensive KQL training
+- **[Microsoft Learn KQL](https://docs.microsoft.com/learn/paths/sc-200-utilize-kql-for-azure-sentinel/)** - Free learning path
+
+---
+
+*⚠️ **Disclaimer**: These security queries are provided for educational and defensive purposes. Always test in a controlled environment and ensure compliance with your organization's policies and applicable laws.*
