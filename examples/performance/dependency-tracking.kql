@@ -1,0 +1,252 @@
+// Dependency Tracking Analysis for Real Time Intelligence
+// Purpose: Monitor external service calls, response times, and failure rates
+// Data Source: dependencies table (Application Insights)
+// Use Case: Service reliability monitoring, SLA tracking, performance optimization
+
+// -----------------------------------------------------------------------------
+// Dependency Call Overview
+// -----------------------------------------------------------------------------
+
+// Overall dependency health summary
+dependencies
+| where timestamp > ago(24h)
+| summarize 
+    TotalCalls = count(),
+    SuccessfulCalls = countif(success == true),
+    FailedCalls = countif(success == false),
+    AvgDuration = round(avg(duration), 2),
+    P95Duration = round(percentile(duration, 95), 2),
+    P99Duration = round(percentile(duration, 99), 2)
+by type, target
+| extend SuccessRate = round((SuccessfulCalls * 100.0) / TotalCalls, 2)
+| sort by FailedCalls desc, AvgDuration desc
+
+// -----------------------------------------------------------------------------
+// Dependency Performance Trends
+// -----------------------------------------------------------------------------
+
+// Response time trends by dependency type
+dependencies
+| where timestamp > ago(24h)
+| summarize 
+    AvgDuration = avg(duration),
+    P95Duration = percentile(duration, 95),
+    CallCount = count()
+by bin(timestamp, 1h), type
+| render timechart 
+    with (title="Dependency Response Times by Type", xtitle="Time", ytitle="Duration (ms)")
+
+// Success rate trends
+dependencies
+| where timestamp > ago(24h)
+| summarize 
+    TotalCalls = count(),
+    SuccessfulCalls = countif(success == true)
+by bin(timestamp, 30m), type
+| extend SuccessRate = (SuccessfulCalls * 100.0) / TotalCalls
+| render timechart 
+    with (title="Dependency Success Rates", xtitle="Time", ytitle="Success Rate %")
+
+// -----------------------------------------------------------------------------
+// Failure Analysis
+// -----------------------------------------------------------------------------
+
+// Top failing dependencies
+dependencies
+| where timestamp > ago(24h)
+| where success == false
+| summarize 
+    FailureCount = count(),
+    SampleData = any(data),
+    SampleResultCode = any(resultCode),
+    SampleTarget = any(target)
+by type, target, resultCode
+| sort by FailureCount desc
+| take 20
+
+// Failure patterns by result code
+dependencies
+| where timestamp > ago(24h)
+| where success == false
+| summarize 
+    FailureCount = count(),
+    AffectedTargets = dcount(target),
+    SampleMessage = any(data)
+by type, resultCode
+| sort by FailureCount desc
+
+// -----------------------------------------------------------------------------
+// Performance Degradation Detection
+// -----------------------------------------------------------------------------
+
+// Detect performance degradation (current vs baseline)
+let CurrentHour = dependencies
+| where timestamp > ago(1h)
+| summarize CurrentAvg = avg(duration) by type, target;
+let PreviousDay = dependencies
+| where timestamp between (ago(25h) .. ago(24h))  // Same hour yesterday
+| summarize BaselineAvg = avg(duration) by type, target;
+CurrentHour
+| join kind=inner (PreviousDay) on type, target
+| extend 
+    DurationIncrease = CurrentAvg - BaselineAvg,
+    PercentIncrease = round(((CurrentAvg - BaselineAvg) / BaselineAvg) * 100, 1)
+| where PercentIncrease > 50  // 50% slower than baseline
+| project type, target, CurrentAvg, BaselineAvg, DurationIncrease, PercentIncrease
+| sort by PercentIncrease desc
+
+// -----------------------------------------------------------------------------
+// SLA Monitoring
+// -----------------------------------------------------------------------------
+
+// SLA compliance monitoring (assuming 99.9% uptime requirement)
+dependencies
+| where timestamp > ago(7d)  // Weekly SLA check
+| summarize 
+    TotalCalls = count(),
+    FailedCalls = countif(success == false)
+by type, target
+| extend 
+    SuccessRate = round(((TotalCalls - FailedCalls) * 100.0) / TotalCalls, 3),
+    SLATarget = 99.9,
+    SLABreach = iff(((TotalCalls - FailedCalls) * 100.0) / TotalCalls < 99.9, "YES", "NO")
+| project type, target, TotalCalls, FailedCalls, SuccessRate, SLATarget, SLABreach
+| sort by SuccessRate asc
+
+// -----------------------------------------------------------------------------
+// Dependency Mapping and Relationships
+// -----------------------------------------------------------------------------
+
+// Service dependency map
+dependencies
+| where timestamp > ago(24h)
+| summarize 
+    CallVolume = count(),
+    AvgDuration = round(avg(duration), 2),
+    SuccessRate = round((countif(success == true) * 100.0) / count(), 2)
+by cloud_RoleName, type, target
+| where CallVolume > 10  // Filter out low-volume calls
+| sort by cloud_RoleName, CallVolume desc
+
+// Cross-service dependency analysis
+dependencies
+| where timestamp > ago(24h)
+| where isnotempty(cloud_RoleName)
+| summarize 
+    UniqueServices = dcount(cloud_RoleName),
+    TotalCalls = count(),
+    FailureRate = round((countif(success == false) * 100.0) / count(), 2)
+by target, type
+| where UniqueServices > 1  // Dependencies used by multiple services
+| sort by FailureRate desc, TotalCalls desc
+
+// -----------------------------------------------------------------------------
+// Database Dependency Analysis
+// -----------------------------------------------------------------------------
+
+// Database query performance
+dependencies
+| where timestamp > ago(24h)
+| where type == "SQL" or type == "Azure SQL"
+| extend DatabaseName = extract(@"Initial Catalog=([^;]+)", 1, target)
+| summarize 
+    QueryCount = count(),
+    AvgDuration = round(avg(duration), 2),
+    P95Duration = round(percentile(duration, 95), 2),
+    SlowQueries = countif(duration > 1000),  // Queries > 1 second
+    FailedQueries = countif(success == false)
+by DatabaseName, cloud_RoleName
+| extend SlowQueryRate = round((SlowQueries * 100.0) / QueryCount, 2)
+| sort by SlowQueryRate desc, AvgDuration desc
+
+// Long-running database operations
+dependencies
+| where timestamp > ago(24h)
+| where type == "SQL" or type == "Azure SQL"
+| where duration > 5000  // Operations > 5 seconds
+| project 
+    timestamp, 
+    cloud_RoleName, 
+    target, 
+    duration,
+    success,
+    data,
+    operation_Id
+| sort by duration desc
+| take 20
+
+// -----------------------------------------------------------------------------
+// HTTP Dependency Analysis
+// -----------------------------------------------------------------------------
+
+// External API performance analysis
+dependencies
+| where timestamp > ago(24h)
+| where type == "Http"
+| extend 
+    Domain = extract(@"https?://([^/]+)", 1, target),
+    StatusCode = toint(resultCode)
+| summarize 
+    RequestCount = count(),
+    AvgDuration = round(avg(duration), 2),
+    P95Duration = round(percentile(duration, 95), 2),
+    SuccessRate = round((countif(success == true) * 100.0) / count(), 2),
+    StatusCodes = make_set(StatusCode)
+by Domain, cloud_RoleName
+| sort by RequestCount desc, AvgDuration desc
+
+// HTTP error analysis
+dependencies
+| where timestamp > ago(24h)
+| where type == "Http" and success == false
+| extend 
+    Domain = extract(@"https?://([^/]+)", 1, target),
+    StatusCode = toint(resultCode)
+| summarize 
+    ErrorCount = count(),
+    StatusCodes = make_set(StatusCode),
+    SampleErrors = make_list(data, 3)
+by Domain, cloud_RoleName
+| sort by ErrorCount desc
+
+// -----------------------------------------------------------------------------
+// Dependency Alerting Queries
+// -----------------------------------------------------------------------------
+
+// High failure rate alert (>5% in last 15 minutes)
+dependencies
+| where timestamp > ago(15m)
+| summarize 
+    TotalCalls = count(),
+    FailedCalls = countif(success == false)
+by type, target
+| where TotalCalls > 10  // Minimum volume threshold
+| extend FailureRate = (FailedCalls * 100.0) / TotalCalls
+| where FailureRate > 5
+| project 
+    AlertType = "High Failure Rate",
+    Service = strcat(type, " - ", target),
+    FailureRate = round(FailureRate, 2),
+    TotalCalls,
+    FailedCalls,
+    Timestamp = now()
+
+// Performance degradation alert (>100% increase from baseline)
+let CurrentPeriod = dependencies
+| where timestamp > ago(15m)
+| summarize CurrentAvg = avg(duration), CurrentCount = count() by type, target;
+let BaselinePeriod = dependencies
+| where timestamp between (ago(1h) .. ago(45m))  // Previous 15-minute window
+| summarize BaselineAvg = avg(duration) by type, target;
+CurrentPeriod
+| join kind=inner (BaselinePeriod) on type, target
+| where CurrentCount > 5  // Minimum volume threshold
+| extend PerformanceDegradation = ((CurrentAvg - BaselineAvg) / BaselineAvg) * 100
+| where PerformanceDegradation > 100  // 100% increase
+| project 
+    AlertType = "Performance Degradation",
+    Service = strcat(type, " - ", target),
+    CurrentAvgMs = round(CurrentAvg, 2),
+    BaselineAvgMs = round(BaselineAvg, 2),
+    DegradationPercent = round(PerformanceDegradation, 1),
+    Timestamp = now()

@@ -1,30 +1,32 @@
 # KQL Examples for Real Time Intelligence
 
-This directory contains practical KQL examples for common Real Time Intelligence scenarios.
+This directory contains practical KQL query examples organized by use case. These examples demonstrate real-world scenarios and best practices for Real Time Intelligence applications.
 
-## Categories
+## 📁 Directory Structure
 
-### Application Performance Monitoring
-- **Request Analysis** - Analyzing HTTP requests, response times, and failure rates
-- **Exception Tracking** - Monitoring and analyzing application exceptions
-- **Dependency Monitoring** - Tracking external service calls and their performance
+### 🔧 Performance Monitoring
+- **performance/** - Performance monitoring and optimization queries
+  - `request-analysis.kql` - Request performance analysis and bottleneck detection
+  - `performance-counters.kql` - Comprehensive system performance monitoring
+  - `dependency-tracking.kql` - Dependency analysis and failure tracking
 
-### Infrastructure Monitoring
-- **Performance Counters** - CPU, memory, disk, and network metrics
-- **Health Monitoring** - System health checks and availability monitoring
-- **Resource Utilization** - Tracking resource usage patterns
+### 📊 Monitoring & Alerting  
+- **monitoring/** - Health monitoring and alerting queries
+  - `health-checks.kql` - Service health monitoring and availability tracking
+  - `alerting-queries.kql` - Automated alert conditions and incident detection
+  - `dashboard-queries.kql` - Dashboard metrics and real-time visualizations
 
-### Business Intelligence
-- **User Analytics** - User behavior and engagement metrics
-- **Custom Events** - Business-specific event tracking
-- **Conversion Funnels** - Analyzing user journey and conversion rates
+### 💼 Business Analytics
+- **business/** - Business intelligence and analytics queries
+  - `user-analytics.kql` - User behavior analysis and engagement metrics
+  - `revenue-analytics.kql` - Revenue tracking and commerce analytics
 
-### Security and Compliance
-- **Audit Logs** - Security event monitoring
-- **Anomaly Detection** - Identifying unusual patterns
-- **Compliance Reporting** - Generating compliance reports
+### 🔒 Security & Compliance
+- **security/** - Security monitoring and compliance queries
+  - `threat-hunting.kql` - Threat detection and security monitoring
+  - `audit-compliance.kql` - Compliance reporting and audit trails
 
-## File Structure
+## 📋 Complete File Structure
 ```
 examples/
 ├── performance/
@@ -37,12 +39,10 @@ examples/
 │   └── dashboard-queries.kql
 ├── business/
 │   ├── user-analytics.kql
-│   ├── custom-events.kql
-│   └── conversion-funnels.kql
+│   └── revenue-analytics.kql
 └── security/
-    ├── audit-logs.kql
-    ├── anomaly-detection.kql
-    └── compliance-reports.kql
+    ├── threat-hunting.kql
+    └── audit-compliance.kql
 ```
 
 Each example file includes:

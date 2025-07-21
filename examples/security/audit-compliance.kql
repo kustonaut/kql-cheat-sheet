@@ -1,0 +1,475 @@
+// Audit and Compliance Queries for Real Time Intelligence
+// Purpose: Generate compliance reports and audit trails for regulatory requirements
+// Data Source: requests, customEvents, traces, dependencies
+// Use Case: GDPR, HIPAA, SOX compliance, security audits, regulatory reporting
+
+// -----------------------------------------------------------------------------
+// GDPR Compliance Monitoring
+// -----------------------------------------------------------------------------
+
+// Personal Data Access Tracking (GDPR Article 15)
+requests
+| where timestamp > ago(30d)
+| where operation_Name contains_any ("GetUserProfile", "GetPersonalData", "UserData", "Profile")
+| extend 
+    RequestorIP = client_IP,
+    DataSubject = user_Id,
+    AccessType = case(
+        operation_Name contains "Profile", "Profile Access",
+        operation_Name contains "Personal", "Personal Data Access",
+        "General User Data Access"
+    )
+| summarize 
+    AccessCount = count(),
+    FirstAccess = min(timestamp),
+    LastAccess = max(timestamp),
+    UniqueIPs = dcount(client_IP),
+    AccessMethods = make_set(operation_Name)
+by DataSubject, AccessType
+| extend 
+    AccessFrequency = round(AccessCount / datetime_diff('day', LastAccess, FirstAccess), 2),
+    ComplianceStatus = case(
+        AccessCount > 50, "🟡 High Volume - Review",
+        UniqueIPs > 5, "🔍 Multiple IPs - Verify",
+        "✅ Normal"
+    )
+| sort by AccessCount desc
+| project 
+    ["Data Subject"] = DataSubject,
+    ["Access Type"] = AccessType,
+    ["Access Count"] = AccessCount,
+    ["Access Frequency/Day"] = AccessFrequency,
+    ["Unique IP Addresses"] = UniqueIPs,
+    ["First Access"] = format_datetime(FirstAccess, "yyyy-MM-dd HH:mm"),
+    ["Last Access"] = format_datetime(LastAccess, "yyyy-MM-dd HH:mm"),
+    ["Compliance Status"] = ComplianceStatus,
+    ["Audit Trail"] = strcat("Subject accessed ", AccessCount, " times from ", UniqueIPs, " IPs")
+
+// Data Processing Consent Tracking
+customEvents
+| where timestamp > ago(90d)
+| where name in ("ConsentGiven", "ConsentWithdrawn", "ConsentUpdated")
+| extend 
+    ConsentType = tostring(customDimensions["consentType"]),
+    ConsentStatus = case(
+        name == "ConsentGiven", "Granted",
+        name == "ConsentWithdrawn", "Withdrawn",
+        "Updated"
+    ),
+    Purpose = tostring(customDimensions["purpose"])
+| summarize 
+    ConsentEvents = count(),
+    CurrentStatus = arg_max(timestamp, ConsentStatus),
+    ConsentHistory = make_list(pack("timestamp", timestamp, "status", ConsentStatus)),
+    LastUpdated = max(timestamp)
+by user_Id, ConsentType, Purpose
+| extend 
+    DaysSinceUpdate = datetime_diff('day', now(), LastUpdated),
+    ComplianceRisk = case(
+        CurrentStatus == "Withdrawn" and DaysSinceUpdate < 30, "⚠️ Recent Withdrawal",
+        DaysSinceUpdate > 365, "🔍 Old Consent",
+        CurrentStatus == "Granted", "✅ Valid Consent",
+        "❌ No Valid Consent"
+    )
+| project 
+    ["User ID"] = user_Id,
+    ["Consent Type"] = ConsentType,
+    ["Processing Purpose"] = Purpose,
+    ["Current Status"] = CurrentStatus,
+    ["Last Updated"] = format_datetime(LastUpdated, "yyyy-MM-dd HH:mm"),
+    ["Days Since Update"] = DaysSinceUpdate,
+    ["Consent Events"] = ConsentEvents,
+    ["Compliance Risk"] = ComplianceRisk,
+    ["GDPR Status"] = case(
+        CurrentStatus == "Granted", "✅ Compliant",
+        CurrentStatus == "Withdrawn", "⚠️ Process Withdrawal",
+        "❌ Non-Compliant"
+    )
+
+// Data Retention Compliance Check
+customEvents
+| where timestamp > ago(365d)
+| where name == "DataCreated"
+| extend 
+    DataType = tostring(customDimensions["dataType"]),
+    DataCategory = tostring(customDimensions["category"]),
+    RetentionPeriod = toint(customDimensions["retentionDays"]),
+    CreatedDate = timestamp
+| extend 
+    DaysOld = datetime_diff('day', now(), CreatedDate),
+    RetentionStatus = case(
+        DaysOld > RetentionPeriod, "🚨 Exceeds Retention",
+        DaysOld > (RetentionPeriod * 0.9), "⚠️ Near Expiration",
+        "✅ Within Retention"
+    )
+| where RetentionStatus != "✅ Within Retention"
+| summarize 
+    RecordsCount = count(),
+    OldestRecord = min(CreatedDate),
+    AverageDaysOverdue = avg(DaysOld - RetentionPeriod),
+    MaxDaysOverdue = max(DaysOld - RetentionPeriod)
+by DataType, DataCategory, RetentionPeriod, RetentionStatus
+| sort by MaxDaysOverdue desc
+| project 
+    ["Data Type"] = DataType,
+    ["Category"] = DataCategory,
+    ["Retention Period (Days)"] = RetentionPeriod,
+    ["Records Count"] = RecordsCount,
+    ["Status"] = RetentionStatus,
+    ["Oldest Record"] = format_datetime(OldestRecord, "yyyy-MM-dd"),
+    ["Avg Days Overdue"] = round(AverageDaysOverdue, 0),
+    ["Max Days Overdue"] = round(MaxDaysOverdue, 0),
+    ["Action Required"] = case(
+        RetentionStatus == "🚨 Exceeds Retention", "Delete immediately",
+        "Schedule for deletion"
+    )
+
+// -----------------------------------------------------------------------------
+// HIPAA Compliance Auditing
+// -----------------------------------------------------------------------------
+
+// Protected Health Information (PHI) Access Audit
+requests
+| where timestamp > ago(30d)
+| where operation_Name contains_any ("Patient", "Medical", "Health", "PHI") or url contains_any ("patient", "medical", "health")
+| extend 
+    AccessorRole = tostring(customDimensions["userRole"]),
+    PatientID = tostring(customDimensions["patientId"]),
+    AccessReason = tostring(customDimensions["accessReason"]),
+    PHIType = case(
+        operation_Name contains "Medical", "Medical Records",
+        operation_Name contains "Patient", "Patient Demographics",
+        operation_Name contains "Health", "Health Records",
+        "General PHI"
+    )
+| summarize 
+    AccessCount = count(),
+    AccessorRoles = make_set(AccessorRole),
+    PatientCount = dcount(PatientID),
+    FirstAccess = min(timestamp),
+    LastAccess = max(timestamp),
+    AccessReasons = make_set(AccessReason)
+by user_Id, PHIType
+| extend 
+    AccessPattern = case(
+        PatientCount > 100, "🔍 High Volume Access",
+        AccessCount > 200, "⚠️ Frequent Access",
+        array_length(AccessorRoles) > 1, "🟡 Multiple Roles",
+        "✅ Normal Access"
+    ),
+    HIPAACompliance = case(
+        isempty(tostring(AccessReasons[0])), "❌ Missing Access Reason",
+        PatientCount > 50 and AccessPattern == "🔍 High Volume Access", "🔍 Review Required",
+        "✅ Compliant"
+    )
+| sort by PatientCount desc
+| project 
+    ["User ID"] = user_Id,
+    ["PHI Type"] = PHIType,
+    ["Access Count"] = AccessCount,
+    ["Patients Accessed"] = PatientCount,
+    ["Accessor Roles"] = strcat(array_length(AccessorRoles), " roles"),
+    ["Access Pattern"] = AccessPattern,
+    ["HIPAA Compliance"] = HIPAACompliance,
+    ["First Access"] = format_datetime(FirstAccess, "yyyy-MM-dd HH:mm"),
+    ["Last Access"] = format_datetime(LastAccess, "yyyy-MM-dd HH:mm"),
+    ["Risk Level"] = case(
+        HIPAACompliance == "❌ Missing Access Reason", "🚨 High",
+        AccessPattern contains "High Volume", "⚠️ Medium",
+        "🟢 Low"
+    )
+
+// Unauthorized PHI Access Detection
+requests
+| where timestamp > ago(7d)
+| where operation_Name contains_any ("Patient", "Medical", "PHI")
+| where success == false or resultCode in ("401", "403")
+| extend 
+    UnauthorizedType = case(
+        resultCode == "401", "Authentication Failed",
+        resultCode == "403", "Access Denied",
+        "Other Failure"
+    ),
+    AttemptedResource = operation_Name
+| summarize 
+    FailedAttempts = count(),
+    TargetResources = dcount(operation_Name),
+    AttemptPattern = make_set(UnauthorizedType),
+    FirstAttempt = min(timestamp),
+    LastAttempt = max(timestamp)
+by user_Id, client_IP
+| extend 
+    ThreatLevel = case(
+        FailedAttempts > 20, "🚨 Critical - Potential Breach Attempt",
+        FailedAttempts > 10, "⚠️ High - Multiple Failed Attempts",
+        TargetResources > 5, "🟡 Medium - Broad Access Attempt",
+        "🟢 Low - Isolated Incident"
+    ),
+    IncidentDuration = LastAttempt - FirstAttempt
+| sort by FailedAttempts desc
+| project 
+    ["User ID"] = user_Id,
+    ["Source IP"] = client_IP,
+    ["Failed Attempts"] = FailedAttempts,
+    ["Resources Targeted"] = TargetResources,
+    ["Threat Level"] = ThreatLevel,
+    ["Incident Duration"] = format_timespan(IncidentDuration, "hh:mm:ss"),
+    ["First Attempt"] = format_datetime(FirstAttempt, "yyyy-MM-dd HH:mm:ss"),
+    ["Last Attempt"] = format_datetime(LastAttempt, "yyyy-MM-dd HH:mm:ss"),
+    ["HIPAA Incident"] = case(
+        ThreatLevel contains "Critical", "🚨 Report to Compliance Officer",
+        ThreatLevel contains "High", "📋 Document and Investigate",
+        "📝 Log for Review"
+    )
+
+// -----------------------------------------------------------------------------
+// SOX Compliance Financial Auditing
+// -----------------------------------------------------------------------------
+
+// Financial System Access Controls
+requests
+| where timestamp > ago(30d)
+| where operation_Name contains_any ("Financial", "Accounting", "Billing", "Payment", "Invoice")
+| extend 
+    UserRole = tostring(customDimensions["userRole"]),
+    FinancialFunction = case(
+        operation_Name contains "Payment", "Payment Processing",
+        operation_Name contains "Invoice", "Invoicing",
+        operation_Name contains "Accounting", "General Ledger",
+        operation_Name contains "Billing", "Billing",
+        "Other Financial"
+    ),
+    AccessLevel = case(
+        operation_Name contains "Create" or operation_Name contains "Update", "Write Access",
+        operation_Name contains "Delete", "Delete Access",
+        "Read Access"
+    )
+| summarize 
+    AccessCount = count(),
+    UniqueUsers = dcount(user_Id),
+    WriteOperations = countif(AccessLevel == "Write Access"),
+    DeleteOperations = countif(AccessLevel == "Delete Access"),
+    FirstAccess = min(timestamp),
+    LastAccess = max(timestamp)
+by FinancialFunction, AccessLevel, UserRole
+| extend 
+    WritePercentage = round((WriteOperations * 100.0) / AccessCount, 1),
+    DeletePercentage = round((DeleteOperations * 100.0) / AccessCount, 1),
+    SOXRisk = case(
+        AccessLevel == "Delete Access" and UserRole != "Administrator", "🚨 Unauthorized Delete Access",
+        AccessLevel == "Write Access" and UserRole in ("Viewer", "Guest"), "⚠️ Inappropriate Write Access",
+        WritePercentage > 50 and UserRole == "Auditor", "🔍 Auditor Making Changes",
+        "✅ Appropriate Access"
+    )
+| sort by case(SOXRisk contains "Unauthorized", 1, SOXRisk contains "Inappropriate", 2, 3), AccessCount desc
+| project 
+    ["Financial Function"] = FinancialFunction,
+    ["Access Level"] = AccessLevel,
+    ["User Role"] = UserRole,
+    ["Access Count"] = AccessCount,
+    ["Unique Users"] = UniqueUsers,
+    ["Write %"] = WritePercentage,
+    ["Delete %"] = DeletePercentage,
+    ["SOX Risk Assessment"] = SOXRisk,
+    ["Time Period"] = strcat(format_datetime(FirstAccess, "MM/dd"), " - ", format_datetime(LastAccess, "MM/dd")),
+    ["Control Status"] = case(
+        SOXRisk contains "🚨", "❌ Control Violation",
+        SOXRisk contains "⚠️", "⚠️ Control Weakness",
+        SOXRisk contains "🔍", "🔍 Review Required",
+        "✅ Control Effective"
+    )
+
+// Financial Data Changes Audit Trail
+customEvents
+| where timestamp > ago(30d)
+| where name in ("FinancialRecordCreated", "FinancialRecordUpdated", "FinancialRecordDeleted")
+| extend 
+    RecordType = tostring(customDimensions["recordType"]),
+    RecordID = tostring(customDimensions["recordId"]),
+    ChangeType = case(
+        name == "FinancialRecordCreated", "Created",
+        name == "FinancialRecordUpdated", "Updated", 
+        "Deleted"
+    ),
+    OldValue = tostring(customDimensions["oldValue"]),
+    NewValue = tostring(customDimensions["newValue"]),
+    ChangeReason = tostring(customDimensions["reason"])
+| summarize 
+    ChangeCount = count(),
+    ChangeTypes = make_set(ChangeType),
+    FirstChange = min(timestamp),
+    LastChange = max(timestamp),
+    UsersMakingChanges = dcount(user_Id),
+    RecordsAffected = dcount(RecordID)
+by RecordType, user_Id
+| extend 
+    ChangesPerDay = round(ChangeCount / datetime_diff('day', LastChange, FirstChange), 1),
+    AuditRisk = case(
+        ChangeCount > 1000, "🚨 High Volume Changes",
+        array_length(ChangeTypes) >= 3, "⚠️ All Change Types",
+        ChangesPerDay > 50, "🔍 Frequent Changes",
+        "✅ Normal Activity"
+    )
+| sort by ChangeCount desc
+| project 
+    ["Record Type"] = RecordType,
+    ["User ID"] = user_Id,
+    ["Total Changes"] = ChangeCount,
+    ["Change Types"] = strcat(array_length(ChangeTypes), " types"),
+    ["Records Affected"] = RecordsAffected,
+    ["Changes/Day"] = ChangesPerDay,
+    ["Audit Risk"] = AuditRisk,
+    ["Period"] = strcat(format_datetime(FirstChange, "MM/dd"), " - ", format_datetime(LastChange, "MM/dd")),
+    ["SOX Compliance"] = case(
+        AuditRisk contains "🚨", "📋 Detailed Review Required",
+        AuditRisk contains "⚠️", "🔍 Management Review",
+        "✅ Standard Monitoring"
+    )
+
+// -----------------------------------------------------------------------------
+// System Access and Authentication Audit
+// -----------------------------------------------------------------------------
+
+// Privileged Access Usage Report
+customEvents
+| where timestamp > ago(30d)
+| where name in ("PrivilegedLogin", "AdminAction", "SystemConfiguration", "UserRoleChange")
+| extend 
+    PrivilegeType = case(
+        name == "PrivilegedLogin", "System Login",
+        name == "AdminAction", "Administrative Action",
+        name == "SystemConfiguration", "System Configuration",
+        "User Management"
+    ),
+    ActionDetails = tostring(customDimensions["action"]),
+    TargetResource = tostring(customDimensions["resource"]),
+    AuthenticationMethod = tostring(customDimensions["authMethod"])
+| summarize 
+    PrivilegedActions = count(),
+    UniqueResources = dcount(TargetResource),
+    AuthMethods = make_set(AuthenticationMethod),
+    SessionDuration = max(timestamp) - min(timestamp),
+    FirstAction = min(timestamp),
+    LastAction = max(timestamp)
+by user_Id, PrivilegeType
+| extend 
+    ActionsPerDay = round(PrivilegedActions / datetime_diff('day', LastAction, FirstAction), 1),
+    SecurityRisk = case(
+        PrivilegedActions > 500, "🚨 Excessive Privileged Access",
+        array_length(AuthMethods) > 2, "⚠️ Multiple Auth Methods",
+        ActionsPerDay > 20, "🔍 High Daily Usage",
+        "✅ Normal Usage"
+    )
+| sort by PrivilegedActions desc
+| project 
+    ["User ID"] = user_Id,
+    ["Privilege Type"] = PrivilegeType,
+    ["Privileged Actions"] = PrivilegedActions,
+    ["Resources Accessed"] = UniqueResources,
+    ["Actions/Day"] = ActionsPerDay,
+    ["Auth Methods"] = strcat(array_length(AuthMethods), " methods"),
+    ["Security Risk"] = SecurityRisk,
+    ["First Action"] = format_datetime(FirstAction, "yyyy-MM-dd HH:mm"),
+    ["Last Action"] = format_datetime(LastAction, "yyyy-MM-dd HH:mm"),
+    ["Audit Requirement"] = case(
+        SecurityRisk contains "🚨", "📋 Immediate Review",
+        SecurityRisk contains "⚠️", "🔍 Weekly Review",
+        "📅 Monthly Review"
+    )
+
+// Multi-Factor Authentication Compliance
+requests
+| where timestamp > ago(30d)
+| where operation_Name contains "login" or url contains "auth"
+| extend 
+    MFAStatus = tostring(customDimensions["mfaCompleted"]),
+    UserRole = tostring(customDimensions["userRole"]),
+    LoginSuccess = success == true and resultCode == "200"
+| summarize 
+    TotalLogins = count(),
+    SuccessfulLogins = countif(LoginSuccess),
+    MFACompleted = countif(MFAStatus == "true"),
+    MFARequired = countif(UserRole in ("Administrator", "Finance", "Manager")),
+    FirstLogin = min(timestamp),
+    LastLogin = max(timestamp)
+by user_Id, UserRole
+| extend 
+    MFAComplianceRate = round((MFACompleted * 100.0) / TotalLogins, 1),
+    LoginSuccessRate = round((SuccessfulLogins * 100.0) / TotalLogins, 1),
+    ComplianceStatus = case(
+        UserRole in ("Administrator", "Finance") and MFAComplianceRate < 100, "❌ MFA Required",
+        UserRole == "Manager" and MFAComplianceRate < 90, "⚠️ MFA Encouraged", 
+        MFAComplianceRate >= 95, "✅ Compliant",
+        "🔍 Review Required"
+    )
+| where ComplianceStatus != "✅ Compliant"
+| sort by case(ComplianceStatus contains "❌", 1, 2), MFAComplianceRate asc
+| project 
+    ["User ID"] = user_Id,
+    ["User Role"] = UserRole,
+    ["Total Logins"] = TotalLogins,
+    ["Successful Logins"] = SuccessfulLogins,
+    ["MFA Completed"] = MFACompleted,
+    ["MFA Compliance %"] = MFAComplianceRate,
+    ["Login Success %"] = LoginSuccessRate,
+    ["Compliance Status"] = ComplianceStatus,
+    ["Risk Level"] = case(
+        ComplianceStatus == "❌ MFA Required", "🚨 High",
+        ComplianceStatus == "⚠️ MFA Encouraged", "🟡 Medium",
+        "🟢 Low"
+    ),
+    ["Action Required"] = case(
+        ComplianceStatus == "❌ MFA Required", "Enforce MFA immediately",
+        ComplianceStatus == "⚠️ MFA Encouraged", "Send MFA reminder",
+        "Monitor compliance"
+    )
+
+// -----------------------------------------------------------------------------
+// Data Governance and Quality Audit
+// -----------------------------------------------------------------------------
+
+// Data Quality Monitoring
+customEvents
+| where timestamp > ago(7d)
+| where name in ("DataValidationFailed", "DataQualityCheck", "DataIntegrityIssue")
+| extend 
+    QualityIssue = case(
+        name == "DataValidationFailed", "Validation Failure",
+        name == "DataQualityCheck", "Quality Check",
+        "Integrity Issue"
+    ),
+    DataSource = tostring(customDimensions["source"]),
+    IssueType = tostring(customDimensions["issueType"]),
+    Severity = tostring(customDimensions["severity"])
+| summarize 
+    IssueCount = count(),
+    UniqueSources = dcount(DataSource),
+    IssueTypes = make_set(IssueType),
+    SeverityLevels = make_set(Severity),
+    FirstIssue = min(timestamp),
+    LastIssue = max(timestamp)
+by QualityIssue, DataSource
+| extend 
+    IssuesPerDay = round(IssueCount / datetime_diff('day', LastIssue, FirstIssue), 1),
+    DataGovernanceRisk = case(
+        IssueCount > 100, "🚨 Critical Data Quality Issues",
+        IssueCount > 50, "⚠️ Significant Quality Issues",
+        IssuesPerDay > 10, "🔍 Frequent Issues",
+        "✅ Acceptable Quality"
+    )
+| sort by IssueCount desc
+| project 
+    ["Quality Issue Type"] = QualityIssue,
+    ["Data Source"] = DataSource,
+    ["Issue Count"] = IssueCount,
+    ["Issues/Day"] = IssuesPerDay,
+    ["Issue Types"] = strcat(array_length(IssueTypes), " types"),
+    ["Severity Levels"] = strcat(array_length(SeverityLevels), " levels"),
+    ["Governance Risk"] = DataGovernanceRisk,
+    ["Period"] = strcat(format_datetime(FirstIssue, "MM/dd"), " - ", format_datetime(LastIssue, "MM/dd")),
+    ["Remediation Priority"] = case(
+        DataGovernanceRisk contains "🚨", "🎯 Immediate",
+        DataGovernanceRisk contains "⚠️", "📋 High",
+        DataGovernanceRisk contains "🔍", "📅 Medium",
+        "📝 Low"
+    )

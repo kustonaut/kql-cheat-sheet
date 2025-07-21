@@ -1,0 +1,529 @@
+// Business Analytics Examples for Real Time Intelligence
+// Purpose: Extract business insights from telemetry data for decision making
+// Data Source: customEvents, requests, pageViews, traces, dependencies
+// Use Case: Product analytics, user behavior analysis, revenue optimization
+
+// -----------------------------------------------------------------------------
+// User Behavior Analytics
+// -----------------------------------------------------------------------------
+
+// User Journey Analysis - Track user flow through application
+customEvents
+| where timestamp > ago(7d)
+| where isnotempty(user_Id)
+| sort by user_Id, timestamp asc
+| extend 
+    PreviousEvent = prev(name, 1),
+    TimeSincePrevious = timestamp - prev(timestamp, 1)
+by user_Id
+| where isnotempty(PreviousEvent)
+| summarize 
+    TransitionCount = count(),
+    AvgTimeBetween = avg(TimeSincePrevious),
+    UniqueUsers = dcount(user_Id)
+by PreviousEvent, CurrentEvent = name
+| where TransitionCount >= 10  // Filter out rare transitions
+| sort by TransitionCount desc
+| project 
+    ["From Event"] = PreviousEvent,
+    ["To Event"] = CurrentEvent,
+    ["Transition Count"] = TransitionCount,
+    ["Unique Users"] = UniqueUsers,
+    ["Avg Time Between"] = format_timespan(AvgTimeBetween, "HH:mm:ss"),
+    ["Conversion Rate"] = round((UniqueUsers * 100.0) / TransitionCount, 2),
+    ["Popular Path"] = case(TransitionCount > 1000, "🔥", TransitionCount > 100, "📈", "📊")
+
+// Session Analysis - Understanding user engagement patterns
+let SessionData = requests
+| where timestamp > ago(7d) and isnotempty(user_Id)
+| summarize 
+    SessionStart = min(timestamp),
+    SessionEnd = max(timestamp),
+    PageViews = count(),
+    UniquePages = dcount(operation_Name),
+    ErrorCount = countif(success == false)
+by user_Id, session_Id
+| extend SessionDuration = SessionEnd - SessionStart;
+SessionData
+| extend 
+    SessionMinutes = round(SessionDuration / 1m, 1),
+    PagesPerMinute = round(PageViews / (SessionDuration / 1m), 2)
+| summarize 
+    TotalSessions = count(),
+    AvgSessionMinutes = round(avg(SessionMinutes), 1),
+    MedianSessionMinutes = round(percentile(SessionMinutes, 50), 1),
+    AvgPagesPerSession = round(avg(PageViews), 1),
+    BounceSessions = countif(PageViews == 1),
+    EngagedSessions = countif(SessionMinutes > 5),
+    ErrorFreeSessions = countif(ErrorCount == 0)
+| extend 
+    BounceRate = round((BounceSessions * 100.0) / TotalSessions, 1),
+    EngagementRate = round((EngagedSessions * 100.0) / TotalSessions, 1),
+    ErrorFreeRate = round((ErrorFreeSessions * 100.0) / TotalSessions, 1)
+| project 
+    ["Total Sessions"] = TotalSessions,
+    ["Avg Duration (min)"] = AvgSessionMinutes,
+    ["Median Duration (min)"] = MedianSessionMinutes,
+    ["Avg Pages/Session"] = AvgPagesPerSession,
+    ["Bounce Rate %"] = BounceRate,
+    ["Engagement Rate %"] = EngagementRate,
+    ["Error-Free Rate %"] = ErrorFreeRate,
+    ["Session Quality"] = case(
+        EngagementRate > 60 and ErrorFreeRate > 95, "🟢 Excellent",
+        EngagementRate > 40 and ErrorFreeRate > 90, "🟡 Good",
+        EngagementRate > 20, "🟠 Fair",
+        "🔴 Poor"
+    )
+
+// User Retention Cohort Analysis
+let StartDate = ago(30d);
+let UserFirstSeen = requests
+| where timestamp >= StartDate
+| where isnotempty(user_Id)
+| summarize FirstSeen = min(timestamp) by user_Id
+| extend CohortWeek = startofweek(FirstSeen);
+let WeeklyActive = requests
+| where timestamp >= StartDate
+| where isnotempty(user_Id)
+| extend ActivityWeek = startofweek(timestamp)
+| distinct user_Id, ActivityWeek;
+UserFirstSeen
+| join kind=inner (WeeklyActive) on user_Id
+| extend WeeksAfterFirstSeen = (ActivityWeek - CohortWeek) / 7d
+| where WeeksAfterFirstSeen >= 0 and WeeksAfterFirstSeen <= 4
+| summarize ActiveUsers = dcount(user_Id) by CohortWeek, WeeksAfterFirstSeen
+| evaluate pivot(WeeksAfterFirstSeen, ActiveUsers)
+| extend 
+    Week0 = column_ifexists("0", 0),
+    Week1 = column_ifexists("1", 0),
+    Week2 = column_ifexists("2", 0),
+    Week3 = column_ifexists("3", 0),
+    Week4 = column_ifexists("4", 0)
+| extend 
+    RetentionWeek1 = round((Week1 * 100.0) / Week0, 1),
+    RetentionWeek2 = round((Week2 * 100.0) / Week0, 1),
+    RetentionWeek3 = round((Week3 * 100.0) / Week0, 1),
+    RetentionWeek4 = round((Week4 * 100.0) / Week0, 1)
+| project 
+    ["Cohort Week"] = format_datetime(CohortWeek, "MM/dd"),
+    ["New Users"] = Week0,
+    ["Week 1 %"] = RetentionWeek1,
+    ["Week 2 %"] = RetentionWeek2,
+    ["Week 3 %"] = RetentionWeek3,
+    ["Week 4 %"] = RetentionWeek4,
+    ["4-Week Retention"] = case(
+        RetentionWeek4 > 25, "🟢 Strong",
+        RetentionWeek4 > 15, "🟡 Moderate",
+        RetentionWeek4 > 5, "🟠 Weak",
+        "🔴 Poor"
+    )
+
+// -----------------------------------------------------------------------------
+// Feature Usage Analytics
+// -----------------------------------------------------------------------------
+
+// Feature Adoption and Usage Trends
+customEvents
+| where timestamp > ago(30d)
+| where name != "PageView"  // Focus on feature events
+| extend FeatureCategory = case(
+    name contains "Search", "Search",
+    name contains "Share" or name contains "Export", "Sharing",
+    name contains "Profile" or name contains "Settings", "Account",
+    name contains "Purchase" or name contains "Payment", "Commerce",
+    name contains "Report" or name contains "Dashboard", "Analytics",
+    "Other"
+)
+| summarize 
+    TotalUsage = count(),
+    UniqueUsers = dcount(user_Id),
+    DailyAverage = count() / 30.0,
+    FirstUsed = min(timestamp),
+    LastUsed = max(timestamp)
+by name, FeatureCategory
+| extend 
+    DaysSinceIntroduction = datetime_diff('day', now(), FirstUsed),
+    AdoptionRate = round(UniqueUsers / 30.0, 1),  // Users per day
+    UsagePerUser = round(toreal(TotalUsage) / UniqueUsers, 1)
+| sort by TotalUsage desc
+| project 
+    Feature = name,
+    Category = FeatureCategory,
+    ["Total Uses"] = TotalUsage,
+    ["Unique Users"] = UniqueUsers,
+    ["Daily Avg"] = round(DailyAverage, 1),
+    ["Uses/User"] = UsagePerUser,
+    ["Days Active"] = DaysSinceIntroduction,
+    ["Adoption Rate"] = case(
+        AdoptionRate > 50, "🚀 High",
+        AdoptionRate > 20, "📈 Growing",
+        AdoptionRate > 5, "📊 Steady",
+        "📉 Low"
+    ),
+    ["Engagement Level"] = case(
+        UsagePerUser > 10, "🔥 Very High",
+        UsagePerUser > 5, "🟢 High",
+        UsagePerUser > 2, "🟡 Medium",
+        "🔴 Low"
+    )
+
+// Feature Funnel Analysis
+let FunnelSteps = dynamic([
+    "UserRegistration", 
+    "ProfileComplete", 
+    "FirstFeatureUse", 
+    "FirstPurchase", 
+    "SecondPurchase"
+]);
+customEvents
+| where timestamp > ago(30d)
+| where name in (FunnelSteps)
+| extend user_Id = tostring(user_Id)
+| summarize EventTime = min(timestamp) by user_Id, name
+| evaluate pivot(name, EventTime)
+| extend 
+    Step1 = column_ifexists("UserRegistration", datetime(null)),
+    Step2 = column_ifexists("ProfileComplete", datetime(null)),
+    Step3 = column_ifexists("FirstFeatureUse", datetime(null)),
+    Step4 = column_ifexists("FirstPurchase", datetime(null)),
+    Step5 = column_ifexists("SecondPurchase", datetime(null))
+| extend 
+    CompletedStep1 = isnotnull(Step1),
+    CompletedStep2 = isnotnull(Step2) and Step2 > Step1,
+    CompletedStep3 = isnotnull(Step3) and Step3 > Step2,
+    CompletedStep4 = isnotnull(Step4) and Step4 > Step3,
+    CompletedStep5 = isnotnull(Step5) and Step5 > Step4
+| summarize 
+    Step1Users = countif(CompletedStep1),
+    Step2Users = countif(CompletedStep2),
+    Step3Users = countif(CompletedStep3),
+    Step4Users = countif(CompletedStep4),
+    Step5Users = countif(CompletedStep5)
+| extend 
+    Step2Rate = round((Step2Users * 100.0) / Step1Users, 1),
+    Step3Rate = round((Step3Users * 100.0) / Step2Users, 1),
+    Step4Rate = round((Step4Users * 100.0) / Step3Users, 1),
+    Step5Rate = round((Step5Users * 100.0) / Step4Users, 1)
+| project 
+    ["Funnel Step"] = "Registration → Profile → Feature → Purchase → Repeat",
+    ["Step 1: Registration"] = strcat(Step1Users, " users"),
+    ["Step 2: Profile (", Step2Rate, "%)"] = strcat(Step2Users, " users"),
+    ["Step 3: Feature (", Step3Rate, "%)"] = strcat(Step3Users, " users"),
+    ["Step 4: Purchase (", Step4Rate, "%)"] = strcat(Step4Users, " users"),
+    ["Step 5: Repeat (", Step5Rate, "%)"] = strcat(Step5Users, " users"),
+    ["Overall Conversion"] = strcat(round((Step5Users * 100.0) / Step1Users, 1), "%")
+
+// -----------------------------------------------------------------------------
+// Revenue and Commerce Analytics
+// -----------------------------------------------------------------------------
+
+// Revenue Analysis by Product and Time
+customEvents
+| where timestamp > ago(90d)
+| where name in ("Purchase", "Subscription", "Upgrade")
+| extend 
+    Amount = toreal(customMeasurements["amount"]),
+    ProductId = tostring(customDimensions["productId"]),
+    PurchaseType = name
+| where isnotnull(Amount) and Amount > 0
+| extend TimeWindow = bin(timestamp, 1d)
+| summarize 
+    TransactionCount = count(),
+    TotalRevenue = sum(Amount),
+    AvgTransactionValue = avg(Amount),
+    UniqueCustomers = dcount(user_Id)
+by TimeWindow, ProductId, PurchaseType
+| extend RevenuePerCustomer = round(TotalRevenue / UniqueCustomers, 2)
+| sort by TimeWindow desc, TotalRevenue desc
+| project 
+    Date = format_datetime(TimeWindow, "MM/dd"),
+    Product = ProductId,
+    Type = PurchaseType,
+    Transactions = TransactionCount,
+    ["Revenue ($)"] = round(TotalRevenue, 2),
+    ["Avg Order ($)"] = round(AvgTransactionValue, 2),
+    ["Customers"] = UniqueCustomers,
+    ["Revenue/Customer ($)"] = RevenuePerCustomer,
+    ["Performance"] = case(
+        TotalRevenue > 10000, "🟢 Excellent",
+        TotalRevenue > 5000, "🟡 Good",
+        TotalRevenue > 1000, "🟠 Fair",
+        "🔴 Below Target"
+    )
+
+// Customer Lifetime Value Analysis
+let CustomerRevenue = customEvents
+| where timestamp > ago(180d)
+| where name in ("Purchase", "Subscription", "Upgrade")
+| extend Amount = toreal(customMeasurements["amount"])
+| where isnotnull(Amount) and Amount > 0
+| summarize 
+    TotalSpent = sum(Amount),
+    TransactionCount = count(),
+    FirstPurchase = min(timestamp),
+    LastPurchase = max(timestamp)
+by user_Id
+| extend CustomerLifetimeDays = datetime_diff('day', LastPurchase, FirstPurchase) + 1;
+CustomerRevenue
+| extend 
+    MonthlySpend = TotalSpent / (CustomerLifetimeDays / 30.0),
+    TransactionsPerMonth = TransactionCount / (CustomerLifetimeDays / 30.0),
+    CustomerTier = case(
+        TotalSpent > 1000, "Premium",
+        TotalSpent > 500, "Gold",
+        TotalSpent > 100, "Silver",
+        "Bronze"
+    )
+| summarize 
+    CustomerCount = count(),
+    AvgLifetimeValue = round(avg(TotalSpent), 2),
+    MedianLifetimeValue = round(percentile(TotalSpent, 50), 2),
+    AvgLifetimeDays = round(avg(CustomerLifetimeDays), 0),
+    AvgMonthlySpend = round(avg(MonthlySpend), 2),
+    AvgTransactionsPerMonth = round(avg(TransactionsPerMonth), 1)
+by CustomerTier
+| sort by AvgLifetimeValue desc
+| project 
+    Tier = CustomerTier,
+    Customers = CustomerCount,
+    ["Avg LTV ($)"] = AvgLifetimeValue,
+    ["Median LTV ($)"] = MedianLifetimeValue,
+    ["Avg Lifetime (days)"] = AvgLifetimeDays,
+    ["Avg Monthly Spend ($)"] = AvgMonthlySpend,
+    ["Transactions/Month"] = AvgTransactionsPerMonth,
+    ["Value Segment"] = case(
+        AvgLifetimeValue > 500, "🎯 High Value",
+        AvgLifetimeValue > 200, "💰 Medium Value",
+        AvgLifetimeValue > 50, "📊 Standard",
+        "🔍 Opportunity"
+    )
+
+// -----------------------------------------------------------------------------
+// Marketing and Campaign Analytics
+// -----------------------------------------------------------------------------
+
+// Campaign Performance Analysis
+requests
+| where timestamp > ago(30d)
+| extend 
+    CampaignSource = tostring(customDimensions["utm_source"]),
+    CampaignMedium = tostring(customDimensions["utm_medium"]),
+    CampaignName = tostring(customDimensions["utm_campaign"])
+| where isnotempty(CampaignSource)
+| summarize 
+    Sessions = dcount(session_Id),
+    UniqueUsers = dcount(user_Id),
+    PageViews = count(),
+    AvgSessionDuration = avg(duration),
+    BounceRate = countif(operation_Name == "/" and duration < 10000) * 100.0 / count()
+by CampaignSource, CampaignMedium, CampaignName
+| extend 
+    PagesPerSession = round(toreal(PageViews) / Sessions, 1),
+    EngagementScore = round((PagesPerSession * 20) + ((10000 - AvgSessionDuration) / 100) + (100 - BounceRate), 0)
+| sort by Sessions desc
+| project 
+    Source = CampaignSource,
+    Medium = CampaignMedium,
+    Campaign = CampaignName,
+    Sessions,
+    ["Unique Users"] = UniqueUsers,
+    ["Pages/Session"] = PagesPerSession,
+    ["Avg Duration (ms)"] = round(AvgSessionDuration, 0),
+    ["Bounce Rate %"] = round(BounceRate, 1),
+    ["Engagement Score"] = EngagementScore,
+    Quality = case(
+        EngagementScore > 150, "🟢 High",
+        EngagementScore > 100, "🟡 Medium",
+        EngagementScore > 50, "🟠 Low",
+        "🔴 Poor"
+    )
+
+// Conversion Attribution Analysis
+let ConversionEvents = customEvents
+| where timestamp > ago(30d)
+| where name == "Purchase"
+| project user_Id, ConversionTime = timestamp, ConversionAmount = toreal(customMeasurements["amount"]);
+let TouchpointEvents = requests
+| where timestamp > ago(30d)
+| extend 
+    CampaignSource = tostring(customDimensions["utm_source"]),
+    TouchpointTime = timestamp
+| where isnotempty(CampaignSource)
+| project user_Id, CampaignSource, TouchpointTime;
+ConversionEvents
+| join kind=inner (TouchpointEvents) on user_Id
+| where TouchpointTime <= ConversionTime
+| extend HoursToConversion = datetime_diff('hour', ConversionTime, TouchpointTime)
+| where HoursToConversion <= 168  // Within 7 days
+| summarize 
+    Conversions = dcount(ConversionTime),
+    TotalRevenue = sum(ConversionAmount),
+    AvgTimeToConversion = avg(HoursToConversion),
+    MedianTimeToConversion = percentile(HoursToConversion, 50)
+by CampaignSource
+| extend RevenuePerConversion = round(TotalRevenue / Conversions, 2)
+| sort by TotalRevenue desc
+| project 
+    ["Traffic Source"] = CampaignSource,
+    Conversions,
+    ["Revenue ($)"] = round(TotalRevenue, 2),
+    ["Revenue/Conversion ($)"] = RevenuePerConversion,
+    ["Avg Hours to Convert"] = round(AvgTimeToConversion, 1),
+    ["Median Hours to Convert"] = round(MedianTimeToConversion, 1),
+    ["Attribution Value"] = case(
+        TotalRevenue > 10000, "🎯 High Impact",
+        TotalRevenue > 5000, "💰 Medium Impact",
+        TotalRevenue > 1000, "📊 Low Impact",
+        "🔍 Minimal Impact"
+    )
+
+// -----------------------------------------------------------------------------
+// Product Performance Analytics
+// -----------------------------------------------------------------------------
+
+// API Endpoint Business Impact Analysis
+requests
+| where timestamp > ago(7d)
+| extend 
+    BusinessImpact = case(
+        url contains "/api/purchase" or operation_Name contains "purchase", "Revenue Critical",
+        url contains "/api/search" or operation_Name contains "search", "User Experience",
+        url contains "/api/recommendation" or operation_Name contains "recommend", "Engagement",
+        url contains "/api/auth" or operation_Name contains "auth", "Access Critical",
+        url contains "/api/profile" or operation_Name contains "profile", "User Management",
+        "Standard"
+    )
+| summarize 
+    RequestCount = count(),
+    ErrorCount = countif(success == false),
+    AvgResponseTime = avg(duration),
+    P95ResponseTime = percentile(duration, 95),
+    UniqueUsers = dcount(user_Id)
+by operation_Name, BusinessImpact
+| extend 
+    ErrorRate = round((ErrorCount * 100.0) / RequestCount, 2),
+    BusinessRisk = case(
+        BusinessImpact == "Revenue Critical" and (ErrorRate > 1 or P95ResponseTime > 2000), "🔴 High Risk",
+        BusinessImpact == "Access Critical" and (ErrorRate > 2 or P95ResponseTime > 3000), "🔴 High Risk",
+        ErrorRate > 5 or P95ResponseTime > 5000, "🟡 Medium Risk",
+        "🟢 Low Risk"
+    )
+| sort by case(BusinessImpact == "Revenue Critical", 1, BusinessImpact == "Access Critical", 2, 3), ErrorRate desc
+| project 
+    API = operation_Name,
+    ["Business Impact"] = BusinessImpact,
+    Requests = RequestCount,
+    ["Error Rate %"] = ErrorRate,
+    ["Avg Response (ms)"] = round(AvgResponseTime, 0),
+    ["P95 Response (ms)"] = round(P95ResponseTime, 0),
+    ["Active Users"] = UniqueUsers,
+    ["Risk Level"] = BusinessRisk
+
+// Feature Flag Performance Analysis
+customEvents
+| where timestamp > ago(14d)
+| where name == "FeatureFlagEvaluated"
+| extend 
+    FeatureName = tostring(customDimensions["featureName"]),
+    FlagValue = tobool(customDimensions["flagEnabled"]),
+    UserSegment = tostring(customDimensions["userSegment"])
+| where isnotempty(FeatureName)
+| summarize 
+    TotalEvaluations = count(),
+    EnabledEvaluations = countif(FlagValue == true),
+    UniqueUsers = dcount(user_Id),
+    UsersWithFeature = dcountif(user_Id, FlagValue == true)
+by FeatureName, UserSegment
+| extend 
+    EnablementRate = round((EnabledEvaluations * 100.0) / TotalEvaluations, 1),
+    UserAdoptionRate = round((UsersWithFeature * 100.0) / UniqueUsers, 1)
+| sort by FeatureName, UserSegment
+| project 
+    Feature = FeatureName,
+    Segment = UserSegment,
+    Evaluations = TotalEvaluations,
+    ["Enabled %"] = EnablementRate,
+    ["Total Users"] = UniqueUsers,
+    ["Users with Feature"] = UsersWithFeature,
+    ["User Adoption %"] = UserAdoptionRate,
+    ["Rollout Status"] = case(
+        EnablementRate == 100, "🟢 Full Rollout",
+        EnablementRate > 50, "🟡 Partial Rollout",
+        EnablementRate > 0, "🔵 Limited Rollout",
+        "⚪ Disabled"
+    )
+
+// -----------------------------------------------------------------------------
+// Geographic and Demographic Analytics
+// -----------------------------------------------------------------------------
+
+// Geographic Performance Analysis
+requests
+| where timestamp > ago(30d)
+| extend 
+    Country = client_CountryOrRegion,
+    City = client_City
+| where isnotempty(Country)
+| summarize 
+    Sessions = dcount(session_Id),
+    UniqueUsers = dcount(user_Id),
+    TotalRequests = count(),
+    AvgResponseTime = avg(duration),
+    ErrorRate = countif(success == false) * 100.0 / count()
+by Country, City
+| where Sessions >= 10  // Filter out locations with minimal traffic
+| sort by Sessions desc
+| take 20
+| project 
+    Location = strcat(City, ", ", Country),
+    Sessions,
+    ["Unique Users"] = UniqueUsers,
+    ["Requests"] = TotalRequests,
+    ["Avg Response (ms)"] = round(AvgResponseTime, 0),
+    ["Error Rate %"] = round(ErrorRate, 2),
+    ["Requests/Session"] = round(toreal(TotalRequests) / Sessions, 1),
+    ["Experience Quality"] = case(
+        AvgResponseTime < 1000 and ErrorRate < 1, "🟢 Excellent",
+        AvgResponseTime < 2000 and ErrorRate < 3, "🟡 Good",
+        AvgResponseTime < 5000 and ErrorRate < 5, "🟠 Fair",
+        "🔴 Poor"
+    )
+
+// Device and Platform Analytics
+requests
+| where timestamp > ago(30d)
+| extend 
+    DeviceType = client_Type,
+    Browser = client_Browser,
+    OS = client_OS
+| summarize 
+    Sessions = dcount(session_Id),
+    UniqueUsers = dcount(user_Id),
+    AvgResponseTime = avg(duration),
+    ErrorRate = countif(success == false) * 100.0 / count(),
+    TotalRequests = count()
+by DeviceType, Browser, OS
+| where Sessions >= 5
+| extend 
+    MarketShare = round((Sessions * 100.0) / toscalar(
+        requests | where timestamp > ago(30d) | summarize dcount(session_Id)
+    ), 2)
+| sort by Sessions desc
+| project 
+    Platform = strcat(DeviceType, " - ", Browser, " (", OS, ")"),
+    ["Market Share %"] = MarketShare,
+    Sessions,
+    ["Users"] = UniqueUsers,
+    ["Avg Response (ms)"] = round(AvgResponseTime, 0),
+    ["Error Rate %"] = round(ErrorRate, 2),
+    ["Platform Health"] = case(
+        ErrorRate < 1 and AvgResponseTime < 1500, "🟢 Excellent",
+        ErrorRate < 3 and AvgResponseTime < 3000, "🟡 Good",
+        ErrorRate < 5, "🟠 Needs Attention",
+        "🔴 Critical Issues"
+    ),
+    ["Priority"] = case(
+        MarketShare > 10, "🎯 High Priority",
+        MarketShare > 5, "📊 Medium Priority",
+        "🔍 Monitor"
+    )

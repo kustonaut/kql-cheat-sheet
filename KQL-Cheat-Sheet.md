@@ -8,10 +8,10 @@ A comprehensive reference for Kusto Query Language (KQL) specifically tailored f
 
 ```mermaid
 graph TD
-    A[📊 Data Source] --> B[🔍 Filter]
-    B --> C[🔄 Transform]
-    C --> D[📈 Aggregate]
-    D --> E[📋 Present]
+    A[Data Source] --> B[Filter]
+    B --> C[Transform]
+    C --> D[Aggregate]
+    D --> E[Present]
     
     B1[where] --> B
     B2[take] --> B
@@ -347,26 +347,318 @@ Events
 )
 ```
 
+## Graph Operators & Network Analysis
+
+> 📚 **Documentation**: [`graph` operators](https://docs.microsoft.com/azure/data-explorer/kusto/query/graph-operators) | [`graph-match` operator](https://docs.microsoft.com/azure/data-explorer/kusto/query/graph-match-operator) | [Graph scenarios](https://docs.microsoft.com/azure/data-explorer/kusto/query/graph-scenarios)
+
+### 🌐 Graph Data Model
+
+```mermaid
+graph LR
+    A[Source Node] -->|Edge/Relationship| B[Target Node]
+    A --> C[Target Node 2]
+    B --> D[Target Node 3]
+    C --> D
+    
+    style A fill:#e3f2fd
+    style B fill:#e8f5e8
+    style C fill:#fff3e0
+    style D fill:#f3e5f5
+```
+
+### Basic Graph Operations
+
+#### 🔗 Creating Graph from Tabular Data
+```kql
+// Convert network logs to graph structure
+NetworkLogs
+| where TimeGenerated > ago(1h)
+| project SourceIP, DestinationIP, Port, Protocol, BytesSent
+| extend EdgeType = strcat(Protocol, ":", Port)
+// SourceIP and DestinationIP become nodes
+// EdgeType defines the relationship
+```
+
+#### 🎯 Graph-Match Pattern Matching
+```kql
+// Find communication patterns
+let GraphData = NetworkLogs
+| where TimeGenerated > ago(24h)
+| project SourceIP, DestinationIP, Protocol;
+GraphData
+| graph-match (source)-[connection]->(destination)
+  where source.SourceIP startswith "10.0"
+  and destination.DestinationIP !startswith "10.0"
+| project SourceInternal=source.SourceIP, 
+          DestinationExternal=destination.DestinationIP,
+          Protocol=connection.Protocol
+| summarize Connections=count() by SourceInternal, DestinationExternal
+| top 10 by Connections
+```
+
+### 🔍 Advanced Graph Analysis Patterns
+
+#### Multi-Hop Path Analysis
+```kql
+// Find 2-hop communication paths (A -> B -> C)
+let NetworkGraph = NetworkLogs
+| where TimeGenerated > ago(6h)
+| project Source=SourceIP, Target=DestinationIP, Protocol, Timestamp=TimeGenerated;
+NetworkGraph
+| graph-match (node1)-[edge1]->(node2)-[edge2]->(node3)
+  where edge1.Timestamp < edge2.Timestamp  // Ensure temporal order
+  and datetime_diff('minute', edge2.Timestamp, edge1.Timestamp) <= 30  // Within 30 minutes
+| project 
+    Path = strcat(node1.Source, " -> ", node2.Source, " -> ", node3.Target),
+    FirstHop = edge1.Protocol,
+    SecondHop = edge2.Protocol,
+    Duration = datetime_diff('minute', edge2.Timestamp, edge1.Timestamp)
+| summarize PathCount = count() by Path, FirstHop, SecondHop
+| sort by PathCount desc
+```
+
+#### Circular Communication Detection
+```kql
+// Detect circular communication patterns (A -> B -> A)
+let CommunicationGraph = NetworkLogs
+| where TimeGenerated > ago(2h)
+| project SourceIP, DestinationIP, TimeGenerated;
+CommunicationGraph
+| graph-match (nodeA)-[forward]->(nodeB)-[backward]->(nodeC)
+  where nodeA.SourceIP == nodeC.DestinationIP  // Same starting and ending node
+  and nodeB.DestinationIP == nodeC.SourceIP    // Reverse path
+  and forward.TimeGenerated < backward.TimeGenerated
+| project 
+    CircularPath = strcat(nodeA.SourceIP, " <-> ", nodeB.DestinationIP),
+    ForwardTime = forward.TimeGenerated,
+    BackwardTime = backward.TimeGenerated,
+    ResponseTime = datetime_diff('second', backward.TimeGenerated, forward.TimeGenerated)
+| where ResponseTime <= 300  // Within 5 minutes
+| summarize 
+    CircularConnections = count(),
+    AvgResponseTime = avg(ResponseTime)
+by CircularPath
+| sort by CircularConnections desc
+```
+
+### 🚨 Security Analysis with Graph Operators
+
+#### Lateral Movement Detection
+```kql
+// Detect potential lateral movement in network
+let AuthEvents = SecurityEvent
+| where TimeGenerated > ago(24h)
+| where EventID in (4624, 4625)  // Logon events
+| project TimeGenerated, Account, Computer, LogonType, EventID;
+// Find accounts that accessed multiple computers
+AuthEvents
+| graph-match (user)-[logon1]->(computer1), (user)-[logon2]->(computer2)
+  where computer1.Computer != computer2.Computer  // Different computers
+  and logon1.EventID == 4624 and logon2.EventID == 4624  // Successful logons
+  and datetime_diff('hour', logon2.TimeGenerated, logon1.TimeGenerated) between (0 .. 6)
+| project 
+    SuspiciousAccount = user.Account,
+    Computer1 = computer1.Computer,
+    Computer2 = computer2.Computer,
+    TimeSpan = datetime_diff('minute', logon2.TimeGenerated, logon1.TimeGenerated)
+| summarize 
+    ComputersAccessed = dcount(Computer2),
+    AccessPattern = make_list(Computer2)
+by SuspiciousAccount
+| where ComputersAccessed >= 3  // Accessed 3+ different computers
+| project SuspiciousAccount, ComputersAccessed, AccessPattern
+```
+
+#### Suspicious Communication Chains
+```kql
+// Find suspicious communication chains (potential data exfiltration)
+let SuspiciousGraph = NetworkLogs
+| where TimeGenerated > ago(4h)
+| where DestinationPort in (80, 443, 22, 3389)  // Common ports
+| project SourceIP, DestinationIP, DestinationPort, BytesSent, TimeGenerated;
+SuspiciousGraph
+| graph-match (internal)-[connection1]->(external)-[connection2]->(final)
+  where internal.SourceIP startswith "192.168"     // Internal network
+  and external.DestinationIP !startswith "192.168" // External destination
+  and final.DestinationIP !startswith "192.168"    // Another external destination
+  and connection1.BytesSent > 100000               // Large data transfer
+| project 
+    InternalSource = internal.SourceIP,
+    FirstExternal = external.DestinationIP,
+    FinalDestination = final.DestinationIP,
+    DataTransferred = connection1.BytesSent,
+    ConnectionTime = connection1.TimeGenerated
+| summarize 
+    TotalDataExfiltrated = sum(DataTransferred),
+    UniqueExternalTargets = dcount(FinalDestination),
+    ExternalTargets = make_set(FinalDestination)
+by InternalSource
+| where TotalDataExfiltrated > 1000000  // More than 1MB total
+| sort by TotalDataExfiltrated desc
+```
+
+### 📊 Business Intelligence with Graph Analysis
+
+#### Customer Journey Mapping
+```kql
+// Map customer journey through application features
+let UserEvents = customEvents
+| where timestamp > ago(7d)
+| where name in ("PageView", "FeatureUse", "Purchase", "Support")
+| project user_Id, EventName=name, timestamp, FeatureName=tostring(customDimensions["feature"]);
+UserEvents
+| graph-match (user)-[event1]->(feature1)-[event2]->(feature2)
+  where event1.timestamp < event2.timestamp
+  and datetime_diff('hour', event2.timestamp, event1.timestamp) <= 24
+| project 
+    UserJourney = strcat(feature1.FeatureName, " -> ", feature2.FeatureName),
+    user_Id = user.user_Id,
+    StepDuration = datetime_diff('minute', event2.timestamp, event1.timestamp)
+| summarize 
+    JourneyCount = dcount(user_Id),
+    AvgStepDuration = avg(StepDuration)
+by UserJourney
+| where JourneyCount >= 10
+| sort by JourneyCount desc
+| project UserJourney, Users=JourneyCount, AvgDurationMins=round(AvgStepDuration, 1)
+```
+
+#### Influencer Network Analysis
+```kql
+// Analyze user referral patterns
+let UserReferrals = customEvents
+| where timestamp > ago(30d)
+| where name == "UserReferral"
+| project 
+    ReferrerUser = tostring(customDimensions["referrer"]),
+    NewUser = tostring(customDimensions["newUser"]),
+    timestamp;
+UserReferrals
+| graph-match (influencer)-[referral1]->(user1)-[referral2]->(user2)
+  where referral1.timestamp < referral2.timestamp
+| project 
+    TopInfluencer = influencer.ReferrerUser,
+    DirectReferral = user1.NewUser,
+    IndirectReferral = user2.NewUser,
+    InfluenceChain = strcat(influencer.ReferrerUser, " -> ", user1.NewUser, " -> ", user2.NewUser)
+| summarize 
+    DirectReferrals = dcount(DirectReferral),
+    IndirectReferrals = dcount(IndirectReferral),
+    TotalInfluence = dcount(DirectReferral) + dcount(IndirectReferral)
+by TopInfluencer
+| sort by TotalInfluence desc
+| take 10
+| project Influencer=TopInfluencer, DirectReferrals, IndirectReferrals, TotalInfluence
+```
+
+### 🔧 Graph Operator Performance Tips
+
+#### ⚡ Optimization Strategies
+```kql
+// ✅ GOOD: Filter data before graph operations
+let FilteredData = NetworkLogs
+| where TimeGenerated > ago(1h)          // Time filter first
+| where SourceIP startswith "10.0"       // Network filter
+| project SourceIP, DestinationIP, Protocol;  // Project needed columns only
+FilteredData
+| graph-match (source)-[connection]->(destination)
+| summarize ConnectionCount = count() by source.SourceIP
+
+// ❌ BAD: Graph operations on large unfiltered dataset
+NetworkLogs
+| graph-match (source)-[connection]->(destination)
+| where source.SourceIP startswith "10.0"  // Filter after expensive operation
+```
+
+#### 📈 Memory-Efficient Graph Queries
+```kql
+// Use summarize to reduce data size before graph operations
+let SummaryGraph = NetworkLogs
+| where TimeGenerated > ago(6h)
+| summarize ConnectionCount = count(), TotalBytes = sum(BytesSent) 
+  by SourceIP, DestinationIP, Protocol  // Aggregate similar connections
+| where ConnectionCount >= 5;  // Focus on frequent connections
+SummaryGraph
+| graph-match (source)-[connection]->(destination)
+  where connection.TotalBytes > 1000000  // Large data transfers only
+| project source.SourceIP, destination.DestinationIP, connection.TotalBytes
+```
+
+### 🎯 Real-World Graph Scenarios
+
+#### IT Infrastructure Mapping
+```kql
+// Map service dependencies from telemetry
+dependencies
+| where timestamp > ago(1h)
+| where success == true
+| project CallingService=cloud_RoleName, CalledService=target, ResponseTime=duration
+| graph-match (service1)-[dependency]->(service2)
+| summarize 
+    CallCount = count(),
+    AvgResponseTime = avg(dependency.ResponseTime),
+    MaxResponseTime = max(dependency.ResponseTime)
+by service1.CallingService, service2.CalledService
+| extend HealthStatus = case(
+    AvgResponseTime < 100, "Healthy",
+    AvgResponseTime < 500, "Warning", 
+    "Critical"
+)
+| project CallingService, CalledService, CallCount, 
+          AvgResponseMs=round(AvgResponseTime, 1), HealthStatus
+```
+
+#### Fraud Detection Network
+```kql
+// Detect potentially fraudulent transaction networks
+let TransactionGraph = PaymentEvents
+| where timestamp > ago(24h)
+| project FromAccount, ToAccount, Amount, timestamp;
+TransactionGraph
+| graph-match (account1)-[transfer1]->(account2)-[transfer2]->(account3)
+  where transfer1.Amount == transfer2.Amount  // Same amount transferred
+  and datetime_diff('minute', transfer2.timestamp, transfer1.timestamp) <= 10  // Quick succession
+  and transfer1.Amount > 1000  // High value transactions
+| project 
+    SuspiciousChain = strcat(account1.FromAccount, " -> ", account2.ToAccount, " -> ", account3.ToAccount),
+    Amount = transfer1.Amount,
+    TimeGap = datetime_diff('second', transfer2.timestamp, transfer1.timestamp)
+| summarize ChainCount = count() by SuspiciousChain, Amount
+| where ChainCount >= 2  // Pattern repeated
+| sort by Amount desc
+```
+
+### 🧩 Graph Operator Cheat Sheet
+
+| **Pattern** | **Use Case** | **KQL Syntax** |
+|-------------|--------------|-----------------|
+| **Simple Path** | A connects to B | `graph-match (a)-[edge]->(b)` |
+| **Two-Hop Path** | A -> B -> C | `graph-match (a)-[e1]->(b)-[e2]->(c)` |
+| **Circular Path** | A -> B -> A | `graph-match (a)-[e1]->(b)-[e2]->(c) where a.id == c.id` |
+| **Common Neighbor** | A -> C <- B | `graph-match (a)-[e1]->(c)<-[e2]-(b)` |
+| **Fan-out** | One source, many targets | `graph-match (source)-[edge]->(target)` + `summarize by source` |
+| **Fan-in** | Many sources, one target | `graph-match (source)-[edge]->(target)` + `summarize by target` |
+
 ## Performance Tips
 
 ![Query Performance Comparison](assets/images/query-performance.svg)
 
 ```mermaid
 graph TD
-    A[🚀 Query Optimization] --> B[🔍 Filter Early]
-    A --> C[📊 Project Only Needed Columns]
-    A --> D[⏰ Use Time Ranges]
-    A --> E[📈 Aggregate Before Join]
+    A[Query Optimization] --> B[Filter Early]
+    A --> C[Project Only Needed Columns]
+    A --> D[Use Time Ranges]
+    A --> E[Aggregate Before Join]
     
     B --> B1[where timestamp > ago(1h)]
     C --> C1[project col1, col2, col3]
     D --> D1[datetime range filters]
     E --> E1[summarize before join]
     
-    F[❌ Performance Killers] --> G[🔄 Full Table Scans]
-    F --> H[🔗 Large Joins]
-    F --> I[📝 Complex Regex]
-    F --> J[🌊 No Time Filters]
+    F[Performance Killers] --> G[Full Table Scans]
+    F --> H[Large Joins]
+    F --> I[Complex Regex]
+    F --> J[No Time Filters]
     
     style A fill:#e8f5e8
     style F fill:#ffebee
@@ -412,18 +704,18 @@ TableName
 ```mermaid
 graph TB
     subgraph "Real Time Intelligence Architecture"
-        A[📱 Applications] --> B[📊 Telemetry]
-        C[🖥️ Infrastructure] --> B
-        D[👥 Users] --> B
+        A[Applications] --> B[Telemetry]
+        C[Infrastructure] --> B
+        D[Users] --> B
         
-        B --> E[📈 Real Time Analytics]
-        E --> F[🚨 Alerts]
-        E --> G[📋 Dashboards]
-        E --> H[🔍 Queries]
+        B --> E[Real Time Analytics]
+        E --> F[Alerts]
+        E --> G[Dashboards]
+        E --> H[Queries]
         
-        F --> I[📧 Notifications]
-        G --> J[📊 Visualizations]
-        H --> K[🧠 Insights]
+        F --> I[Notifications]
+        G --> J[Visualizations]
+        H --> K[Insights]
     end
     
     style A fill:#e3f2fd
@@ -532,14 +824,14 @@ heartbeat
 
 ```mermaid
 graph LR
-    A[📅 Time Data] --> B[🔄 bin()]
-    B --> C[📊 summarize]
-    C --> D[📈 render timechart]
+    A[Time Data] --> B[bin()]
+    B --> C[summarize]
+    C --> D[render timechart]
     
     A1[timestamp] --> B
     B1[bin(timestamp, 15m)] --> C
     C1[count(), avg(), etc.] --> D
-    D1[Line Chart] --> E[🎯 Insights]
+    D1[Line Chart] --> E[Insights]
     
     style A fill:#e3f2fd
     style B fill:#e8f5e8
@@ -671,17 +963,17 @@ requests
 ```mermaid
 graph TB
     subgraph "Security Analytics Pipeline"
-        A[🔒 Security Logs] --> B[📊 Normalization]
-        B --> C[🔍 Detection]
-        C --> D[🚨 Alerting]
+        A[Security Logs] --> B[Normalization]
+        B --> C[Detection]
+        C --> D[Alerting]
         
-        E[🌐 Network Logs] --> B
-        F[👤 Identity Logs] --> B
-        G[🖥️ Endpoint Logs] --> B
+        E[Network Logs] --> B
+        F[Identity Logs] --> B
+        G[Endpoint Logs] --> B
         
-        C --> H[📈 Threat Intelligence]
-        C --> I[🕵️ Threat Hunting]
-        C --> J[📋 Incident Response]
+        C --> H[Threat Intelligence]
+        C --> I[Threat Hunting]
+        C --> J[Incident Response]
     end
     
     style A fill:#ffebee

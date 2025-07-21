@@ -1,0 +1,322 @@
+// Health Check Queries for Real Time Intelligence
+// Purpose: Monitor system health, availability, and service status
+// Data Source: Heartbeat, requests, exceptions, performanceCounters
+// Use Case: Service monitoring, uptime tracking, health dashboards
+
+// -----------------------------------------------------------------------------
+// Service Availability Monitoring
+// -----------------------------------------------------------------------------
+
+// Overall service availability (based on requests)
+requests
+| where timestamp > ago(24h)
+| summarize 
+    TotalRequests = count(),
+    SuccessfulRequests = countif(success == true),
+    FailedRequests = countif(success == false)
+by bin(timestamp, 1h), cloud_RoleName
+| extend AvailabilityPercent = round((SuccessfulRequests * 100.0) / TotalRequests, 2)
+| render timechart 
+    with (title="Service Availability %", xtitle="Time", ytitle="Availability %")
+
+// Current service health status
+requests
+| where timestamp > ago(15m)
+| summarize 
+    RequestCount = count(),
+    SuccessRate = round((countif(success == true) * 100.0) / count(), 2),
+    AvgResponseTime = round(avg(duration), 2),
+    P95ResponseTime = round(percentile(duration, 95), 2)
+by cloud_RoleName
+| extend 
+    HealthStatus = case(
+        SuccessRate < 95, "Critical",
+        SuccessRate < 99, "Warning",
+        AvgResponseTime > 2000, "Warning",
+        "Healthy"
+    )
+| project 
+    Service = cloud_RoleName,
+    HealthStatus,
+    SuccessRate,
+    AvgResponseTime,
+    P95ResponseTime,
+    RequestCount
+| sort by HealthStatus desc, SuccessRate asc
+
+// -----------------------------------------------------------------------------
+// Heartbeat Monitoring
+// -----------------------------------------------------------------------------
+
+// Server/Agent heartbeat status
+Heartbeat
+| where TimeGenerated > ago(10m)
+| summarize LastHeartbeat = max(TimeGenerated) by Computer, Category
+| extend 
+    MinutesSinceLastHeartbeat = datetime_diff('minute', now(), LastHeartbeat),
+    Status = case(
+        MinutesSinceLastHeartbeat > 5, "Down",
+        MinutesSinceLastHeartbeat > 3, "Warning",
+        "Online"
+    )
+| project Computer, Category, LastHeartbeat, MinutesSinceLastHeartbeat, Status
+| sort by Status desc, MinutesSinceLastHeartbeat desc
+
+// Heartbeat availability over time
+Heartbeat
+| where TimeGenerated > ago(24h)
+| summarize HeartbeatCount = count() by bin(TimeGenerated, 1h), Computer
+| render timechart 
+    with (title="Heartbeat Frequency by Server", xtitle="Time", ytitle="Heartbeat Count")
+
+// -----------------------------------------------------------------------------
+// Application Health Checks
+// -----------------------------------------------------------------------------
+
+// Health endpoint monitoring (assuming /health endpoints)
+requests
+| where timestamp > ago(1h)
+| where url contains "/health" or url contains "/ping" or url contains "/status"
+| summarize 
+    HealthChecks = count(),
+    SuccessfulChecks = countif(success == true),
+    FailedChecks = countif(success == false),
+    AvgResponseTime = round(avg(duration), 2)
+by bin(timestamp, 5m), cloud_RoleName, url
+| extend HealthScore = round((SuccessfulChecks * 100.0) / HealthChecks, 1)
+| where HealthScore < 100  // Show only failing health checks
+| project timestamp, Service = cloud_RoleName, Endpoint = url, HealthScore, FailedChecks, AvgResponseTime
+| sort by timestamp desc, HealthScore asc
+
+// Service dependency health check
+let ServiceHealth = requests
+| where timestamp > ago(15m)
+| summarize 
+    SuccessRate = round((countif(success == true) * 100.0) / count(), 2),
+    RequestCount = count()
+by cloud_RoleName;
+let DependencyHealth = dependencies
+| where timestamp > ago(15m)
+| summarize 
+    DepSuccessRate = round((countif(success == true) * 100.0) / count(), 2),
+    DependencyCount = count()
+by cloud_RoleName;
+ServiceHealth
+| join kind=leftouter (DependencyHealth) on cloud_RoleName
+| extend 
+    OverallHealth = case(
+        SuccessRate < 95 or DepSuccessRate < 95, "Critical",
+        SuccessRate < 99 or DepSuccessRate < 99, "Warning",
+        "Healthy"
+    )
+| project 
+    Service = cloud_RoleName,
+    OverallHealth,
+    ServiceSuccessRate = SuccessRate,
+    DependencySuccessRate = DepSuccessRate,
+    ServiceRequests = RequestCount,
+    DependencyCalls = DependencyCount
+| sort by OverallHealth desc
+
+// -----------------------------------------------------------------------------
+// Error Rate Monitoring
+// -----------------------------------------------------------------------------
+
+// Error rate trends
+requests
+| where timestamp > ago(24h)
+| summarize 
+    TotalRequests = count(),
+    Errors = countif(success == false)
+by bin(timestamp, 1h), cloud_RoleName
+| extend ErrorRate = round((Errors * 100.0) / TotalRequests, 2)
+| render timechart 
+    with (title="Error Rate % by Service", xtitle="Time", ytitle="Error Rate %")
+
+// Current error rate alerts
+requests
+| where timestamp > ago(15m)
+| summarize 
+    TotalRequests = count(),
+    ErrorCount = countif(success == false)
+by cloud_RoleName
+| where TotalRequests > 5  // Minimum request threshold
+| extend ErrorRate = round((ErrorCount * 100.0) / TotalRequests, 2)
+| where ErrorRate > 1  // Alert if error rate > 1%
+| project 
+    Service = cloud_RoleName,
+    ErrorRate,
+    ErrorCount,
+    TotalRequests,
+    AlertLevel = case(ErrorRate > 5, "Critical", ErrorRate > 2, "Warning", "Info"),
+    Timestamp = now()
+| sort by ErrorRate desc
+
+// -----------------------------------------------------------------------------
+// Performance Health Monitoring
+// -----------------------------------------------------------------------------
+
+// Response time health check
+requests
+| where timestamp > ago(1h)
+| summarize 
+    AvgResponseTime = round(avg(duration), 2),
+    P50ResponseTime = round(percentile(duration, 50), 2),
+    P95ResponseTime = round(percentile(duration, 95), 2),
+    P99ResponseTime = round(percentile(duration, 99), 2),
+    RequestCount = count()
+by cloud_RoleName
+| extend 
+    PerformanceStatus = case(
+        P95ResponseTime > 5000, "Critical",    // >5 seconds
+        P95ResponseTime > 2000, "Warning",     // >2 seconds
+        AvgResponseTime > 1000, "Warning",     // >1 second avg
+        "Healthy"
+    )
+| project 
+    Service = cloud_RoleName,
+    PerformanceStatus,
+    AvgResponseTime,
+    P50ResponseTime,
+    P95ResponseTime,
+    P99ResponseTime,
+    RequestCount
+| sort by PerformanceStatus desc, P95ResponseTime desc
+
+// -----------------------------------------------------------------------------
+// Infrastructure Health Monitoring
+// -----------------------------------------------------------------------------
+
+// System resource health
+performanceCounters
+| where TimeGenerated > ago(15m)
+| where CounterName in ("% Processor Time", "Available MBytes", "% Free Space")
+| where InstanceName in ("_Total", "C:")
+| summarize AvgValue = avg(CounterValue) by Computer, CounterName
+| evaluate pivot(CounterName, AvgValue)
+| extend 
+    CPUHealth = case(['% Processor Time'] > 90, "Critical", ['% Processor Time'] > 80, "Warning", "Healthy"),
+    MemoryHealth = case(['Available MBytes'] < 512, "Critical", ['Available MBytes'] < 1024, "Warning", "Healthy"),
+    DiskHealth = case(['% Free Space'] < 10, "Critical", ['% Free Space'] < 20, "Warning", "Healthy"),
+    OverallHealth = case(
+        CPUHealth == "Critical" or MemoryHealth == "Critical" or DiskHealth == "Critical", "Critical",
+        CPUHealth == "Warning" or MemoryHealth == "Warning" or DiskHealth == "Warning", "Warning",
+        "Healthy"
+    )
+| project 
+    Server = Computer,
+    OverallHealth,
+    CPU_Percent = round(['% Processor Time'], 1),
+    CPUHealth,
+    Memory_MB = round(['Available MBytes'], 0),
+    MemoryHealth,
+    DiskFree_Percent = round(['% Free Space'], 1),
+    DiskHealth
+| sort by OverallHealth desc, CPU_Percent desc
+
+// -----------------------------------------------------------------------------
+// Comprehensive Health Dashboard
+// -----------------------------------------------------------------------------
+
+// Service health summary dashboard
+let ServiceMetrics = requests
+| where timestamp > ago(15m)
+| summarize 
+    RequestCount = count(),
+    SuccessRate = round((countif(success == true) * 100.0) / count(), 2),
+    AvgResponseTime = round(avg(duration), 2),
+    ErrorCount = countif(success == false)
+by cloud_RoleName;
+let ExceptionMetrics = exceptions
+| where timestamp > ago(15m)
+| summarize ExceptionCount = count() by cloud_RoleName;
+let DependencyMetrics = dependencies
+| where timestamp > ago(15m)
+| summarize 
+    DependencySuccessRate = round((countif(success == true) * 100.0) / count(), 2),
+    DependencyCount = count()
+by cloud_RoleName;
+ServiceMetrics
+| join kind=leftouter (ExceptionMetrics) on cloud_RoleName
+| join kind=leftouter (DependencyMetrics) on cloud_RoleName
+| extend 
+    HealthScore = case(
+        SuccessRate < 95 or DependencySuccessRate < 95, 1,  // Critical
+        SuccessRate < 99 or DependencySuccessRate < 99, 2,  // Warning
+        AvgResponseTime > 2000, 2,  // Warning
+        ExceptionCount > 10, 2,     // Warning
+        3  // Healthy
+    ),
+    HealthStatus = case(
+        HealthScore == 1, "🔴 Critical",
+        HealthScore == 2, "🟡 Warning",
+        "🟢 Healthy"
+    )
+| project 
+    Service = cloud_RoleName,
+    HealthStatus,
+    SuccessRate,
+    AvgResponseTime,
+    RequestCount,
+    ErrorCount,
+    ExceptionCount,
+    DependencySuccessRate,
+    LastUpdated = now()
+| sort by HealthScore asc, SuccessRate asc
+
+// -----------------------------------------------------------------------------
+// Health Check Alerts
+// -----------------------------------------------------------------------------
+
+// Critical health alerts
+union 
+(
+    // Service availability alerts
+    requests
+    | where timestamp > ago(15m)
+    | summarize 
+        RequestCount = count(),
+        SuccessRate = round((countif(success == true) * 100.0) / count(), 2)
+    by cloud_RoleName
+    | where RequestCount > 5 and SuccessRate < 95
+    | project 
+        AlertType = "Service Availability",
+        Component = cloud_RoleName,
+        Severity = "Critical",
+        Message = strcat("Success rate dropped to ", SuccessRate, "%"),
+        Value = SuccessRate,
+        Threshold = 95.0
+),
+(
+    // Performance degradation alerts
+    requests
+    | where timestamp > ago(15m)
+    | summarize 
+        AvgResponseTime = avg(duration),
+        RequestCount = count()
+    by cloud_RoleName
+    | where RequestCount > 5 and AvgResponseTime > 5000
+    | project 
+        AlertType = "Performance Degradation",
+        Component = cloud_RoleName,
+        Severity = "Critical",
+        Message = strcat("Average response time: ", round(AvgResponseTime, 0), "ms"),
+        Value = AvgResponseTime,
+        Threshold = 5000.0
+),
+(
+    // High exception rate alerts
+    exceptions
+    | where timestamp > ago(15m)
+    | summarize ExceptionCount = count() by cloud_RoleName
+    | where ExceptionCount > 20
+    | project 
+        AlertType = "High Exception Rate",
+        Component = cloud_RoleName,
+        Severity = "Warning",
+        Message = strcat("Exception count: ", ExceptionCount, " in last 15 minutes"),
+        Value = toreal(ExceptionCount),
+        Threshold = 20.0
+)
+| extend Timestamp = now()
+| sort by Severity asc, Value desc

@@ -1,0 +1,516 @@
+// Security and Threat Hunting Examples for Real Time Intelligence
+// Purpose: Detect security threats, audit access, and monitor compliance
+// Data Source: requests, dependencies, traces, customEvents, exceptions
+// Use Case: Security monitoring, threat detection, compliance reporting
+
+// -----------------------------------------------------------------------------
+// Authentication and Access Security
+// -----------------------------------------------------------------------------
+
+// Failed Authentication Analysis
+requests
+| where timestamp > ago(24h)
+| where url contains "login" or operation_Name contains "auth"
+| extend AuthResult = case(
+    resultCode == "401", "Failed",
+    resultCode == "200", "Success",
+    "Other"
+)
+| summarize 
+    TotalAttempts = count(),
+    FailedAttempts = countif(AuthResult == "Failed"),
+    SuccessfulAttempts = countif(AuthResult == "Success"),
+    UniqueIPs = dcount(client_IP),
+    UniqueUsers = dcount(user_Id)
+by client_IP, client_CountryOrRegion
+| extend 
+    FailureRate = round((FailedAttempts * 100.0) / TotalAttempts, 1),
+    SuspiciousActivity = case(
+        FailedAttempts > 10 and FailureRate > 80, "🚨 Brute Force",
+        FailedAttempts > 5 and FailureRate > 50, "⚠️ Multiple Failures",
+        UniqueUsers > 5 and FailureRate > 30, "🔍 Credential Stuffing",
+        "✅ Normal"
+    )
+| where SuspiciousActivity != "✅ Normal"
+| sort by FailedAttempts desc
+| project 
+    ["Source IP"] = client_IP,
+    ["Country"] = client_CountryOrRegion,
+    ["Total Attempts"] = TotalAttempts,
+    ["Failed Attempts"] = FailedAttempts,
+    ["Failure Rate %"] = FailureRate,
+    ["Unique Users Targeted"] = UniqueUsers,
+    ["Threat Level"] = SuspiciousActivity,
+    ["Recommended Action"] = case(
+        SuspiciousActivity == "🚨 Brute Force", "Block IP immediately",
+        SuspiciousActivity == "⚠️ Multiple Failures", "Monitor closely",
+        "Investigate further"
+    )
+
+// Privilege Escalation Detection
+customEvents
+| where timestamp > ago(24h)
+| where name in ("RoleChange", "PermissionGranted", "AdminAccess")
+| extend 
+    TargetUser = tostring(customDimensions["targetUser"]),
+    NewRole = tostring(customDimensions["newRole"]),
+    PreviousRole = tostring(customDimensions["previousRole"]),
+    GrantedBy = tostring(customDimensions["grantedBy"])
+| summarize 
+    EscalationEvents = count(),
+    UniqueTargets = dcount(TargetUser),
+    AdminEscalations = countif(NewRole contains "Admin" or NewRole contains "Root"),
+    FirstEscalation = min(timestamp),
+    LastEscalation = max(timestamp)
+by GrantedBy, NewRole
+| extend 
+    EscalationRate = round((AdminEscalations * 100.0) / EscalationEvents, 1),
+    RiskLevel = case(
+        AdminEscalations > 5, "🔴 High Risk",
+        AdminEscalations > 2 or EscalationRate > 50, "🟡 Medium Risk",
+        "🟢 Low Risk"
+    )
+| sort by AdminEscalations desc
+| project 
+    ["Granted By"] = GrantedBy,
+    ["New Role"] = NewRole,
+    ["Escalation Events"] = EscalationEvents,
+    ["Admin Escalations"] = AdminEscalations,
+    ["Escalation Rate %"] = EscalationRate,
+    ["Unique Targets"] = UniqueTargets,
+    ["Risk Level"] = RiskLevel,
+    ["Time Span"] = strcat(format_datetime(FirstEscalation, "MM/dd HH:mm"), " - ", format_datetime(LastEscalation, "MM/dd HH:mm"))
+
+// Unusual Access Patterns
+let UserBaseline = requests
+| where timestamp between (ago(7d) .. ago(1d))
+| where isnotempty(user_Id)
+| summarize 
+    BaselineRequests = count(),
+    BaselineCountries = dcount(client_CountryOrRegion),
+    BaselineIPs = dcount(client_IP),
+    CommonCountry = mode(client_CountryOrRegion)
+by user_Id;
+let RecentActivity = requests
+| where timestamp > ago(1d)
+| where isnotempty(user_Id)
+| summarize 
+    RecentRequests = count(),
+    RecentCountries = dcount(client_CountryOrRegion),
+    RecentIPs = dcount(client_IP),
+    CurrentCountry = mode(client_CountryOrRegion),
+    UniqueOperations = dcount(operation_Name)
+by user_Id;
+RecentActivity
+| join kind=inner (UserBaseline) on user_Id
+| extend 
+    RequestIncrease = round(((RecentRequests - BaselineRequests) / toreal(BaselineRequests)) * 100, 1),
+    CountryAnomaly = CurrentCountry != CommonCountry,
+    IPAnomaly = RecentIPs > (BaselineIPs * 2),
+    ActivityAnomaly = RecentRequests > (BaselineRequests * 3)
+| where CountryAnomaly or IPAnomaly or ActivityAnomaly or RequestIncrease > 200
+| extend 
+    RiskScore = case(
+        CountryAnomaly and (IPAnomaly or ActivityAnomaly), 90,
+        CountryAnomaly or (IPAnomaly and ActivityAnomaly), 70,
+        ActivityAnomaly and RequestIncrease > 500, 60,
+        40
+    )
+| sort by RiskScore desc
+| project 
+    ["User ID"] = user_Id,
+    ["Risk Score"] = RiskScore,
+    ["Recent Requests"] = RecentRequests,
+    ["Request Increase %"] = RequestIncrease,
+    ["Baseline Country"] = CommonCountry,
+    ["Current Country"] = CurrentCountry,
+    ["Country Change"] = CountryAnomaly,
+    ["IP Anomaly"] = IPAnomaly,
+    ["Activity Spike"] = ActivityAnomaly,
+    ["Alert Level"] = case(
+        RiskScore >= 80, "🚨 Critical",
+        RiskScore >= 60, "⚠️ High",
+        RiskScore >= 40, "🟡 Medium",
+        "🟢 Low"
+    )
+
+// -----------------------------------------------------------------------------
+// Data Access and Exfiltration Detection
+// -----------------------------------------------------------------------------
+
+// Large Data Downloads Detection
+requests
+| where timestamp > ago(4h)
+| where operation_Name contains "download" or operation_Name contains "export" or url contains "download"
+| extend DataSize = toint(customMeasurements["responseSize"])
+| where isnotnull(DataSize) and DataSize > 0
+| summarize 
+    TotalDownloads = count(),
+    TotalDataSize = sum(DataSize),
+    LargestDownload = max(DataSize),
+    UniqueFiles = dcount(url),
+    DownloadSessions = dcount(session_Id)
+by user_Id, client_IP
+| extend 
+    AvgDownloadSize = round(TotalDataSize / TotalDownloads, 0),
+    SuspiciousVolume = case(
+        TotalDataSize > 1000000000, "🚨 >1GB Downloaded",  // >1GB
+        TotalDataSize > 100000000, "⚠️ >100MB Downloaded",   // >100MB
+        TotalDownloads > 50, "🔍 High Frequency",
+        "✅ Normal"
+    )
+| where SuspiciousVolume != "✅ Normal"
+| sort by TotalDataSize desc
+| project 
+    ["User ID"] = user_Id,
+    ["Source IP"] = client_IP,
+    ["Total Downloads"] = TotalDownloads,
+    ["Total Size (MB)"] = round(TotalDataSize / 1000000.0, 1),
+    ["Largest File (MB)"] = round(LargestDownload / 1000000.0, 1),
+    ["Avg Size (MB)"] = round(AvgDownloadSize / 1000000.0, 1),
+    ["Unique Files"] = UniqueFiles,
+    ["Sessions"] = DownloadSessions,
+    ["Risk Level"] = SuspiciousVolume
+
+// Sensitive Data Access Monitoring
+requests
+| where timestamp > ago(24h)
+| where url contains_any ("api/users", "api/customers", "api/financial", "api/confidential", "pii", "ssn", "credit")
+| extend 
+    SensitivityLevel = case(
+        url contains_any ("financial", "payment", "credit"), "High - Financial",
+        url contains_any ("pii", "ssn", "personal"), "High - PII",
+        url contains_any ("confidential", "internal"), "Medium - Internal",
+        url contains "users", "Low - User Data",
+        "Standard"
+    )
+| summarize 
+    AccessCount = count(),
+    UniqueUsers = dcount(user_Id),
+    UniqueIPs = dcount(client_IP),
+    ErrorCount = countif(success == false),
+    FirstAccess = min(timestamp),
+    LastAccess = max(timestamp)
+by SensitivityLevel, operation_Name
+| extend 
+    ErrorRate = round((ErrorCount * 100.0) / AccessCount, 1),
+    AccessPattern = case(
+        AccessCount > 1000, "🔴 High Volume",
+        AccessCount > 100, "🟡 Medium Volume",
+        ErrorRate > 20, "🟠 High Error Rate",
+        "🟢 Normal"
+    )
+| sort by case(SensitivityLevel startswith "High", 1, SensitivityLevel startswith "Medium", 2, 3), AccessCount desc
+| project 
+    ["Sensitivity Level"] = SensitivityLevel,
+    ["API Endpoint"] = operation_Name,
+    ["Access Count"] = AccessCount,
+    ["Unique Users"] = UniqueUsers,
+    ["Unique IPs"] = UniqueIPs,
+    ["Error Rate %"] = ErrorRate,
+    ["Access Pattern"] = AccessPattern,
+    ["Time Span"] = strcat(format_datetime(FirstAccess, "MM/dd HH:mm"), " - ", format_datetime(LastAccess, "HH:mm")),
+    ["Risk Assessment"] = case(
+        SensitivityLevel startswith "High" and AccessCount > 100, "🚨 Monitor Closely",
+        SensitivityLevel startswith "High", "⚠️ Review Access",
+        AccessPattern == "🔴 High Volume", "🔍 Investigate",
+        "✅ Normal"
+    )
+
+// -----------------------------------------------------------------------------
+// Network and Infrastructure Security
+// -----------------------------------------------------------------------------
+
+// Suspicious IP Activity Analysis
+requests
+| where timestamp > ago(6h)
+| summarize 
+    RequestCount = count(),
+    UniqueUsers = dcount(user_Id),
+    UniqueOperations = dcount(operation_Name),
+    ErrorCount = countif(success == false),
+    DistinctUserAgents = dcount(client_Browser),
+    Countries = make_set(client_CountryOrRegion)
+by client_IP
+| extend 
+    ErrorRate = round((ErrorCount * 100.0) / RequestCount, 1),
+    UsersPerIP = round(toreal(UniqueUsers), 0),
+    RequestsPerUser = case(UniqueUsers > 0, round(toreal(RequestCount) / UniqueUsers, 1), RequestCount),
+    SuspiciousIndicators = case(
+        RequestCount > 1000 and ErrorRate > 50, "High Volume + High Errors",
+        UniqueUsers > 20, "Many Users from Single IP",
+        RequestsPerUser > 100, "Excessive Requests per User",
+        DistinctUserAgents > 10, "Multiple User Agents",
+        ErrorRate > 80, "Predominantly Errors",
+        "Normal Activity"
+    )
+| where SuspiciousIndicators != "Normal Activity"
+| extend 
+    ThreatLevel = case(
+        SuspiciousIndicators contains "High Volume" or UniqueUsers > 50, "🚨 Critical",
+        UniqueUsers > 10 or RequestsPerUser > 200, "⚠️ High",
+        "🟡 Medium"
+    )
+| sort by RequestCount desc
+| project 
+    ["Source IP"] = client_IP,
+    ["Countries"] = strcat(array_length(Countries), " countries"),
+    ["Requests"] = RequestCount,
+    ["Users"] = UniqueUsers,
+    ["Req/User"] = RequestsPerUser,
+    ["Error Rate %"] = ErrorRate,
+    ["User Agents"] = DistinctUserAgents,
+    ["Suspicious Pattern"] = SuspiciousIndicators,
+    ["Threat Level"] = ThreatLevel
+
+// DDoS Attack Detection
+requests
+| where timestamp > ago(1h)
+| extend TimeWindow = bin(timestamp, 1m)
+| summarize 
+    RequestsPerMinute = count(),
+    UniqueIPs = dcount(client_IP),
+    ErrorRate = countif(success == false) * 100.0 / count()
+by TimeWindow
+| extend 
+    TrafficSpike = RequestsPerMinute > prev(RequestsPerMinute, 1) * 5,  // 5x increase
+    HighErrorRate = ErrorRate > 50,
+    AttackIndicator = case(
+        TrafficSpike and HighErrorRate, "🚨 Potential DDoS",
+        TrafficSpike, "⚠️ Traffic Spike", 
+        HighErrorRate, "🔍 Error Spike",
+        "✅ Normal"
+    )
+| where AttackIndicator != "✅ Normal"
+| sort by TimeWindow desc
+| project 
+    ["Time"] = format_datetime(TimeWindow, "HH:mm"),
+    ["Requests/Min"] = RequestsPerMinute,
+    ["Unique IPs"] = UniqueIPs,
+    ["Error Rate %"] = round(ErrorRate, 1),
+    ["Traffic Change"] = round(((RequestsPerMinute - prev(RequestsPerMinute, 1)) / prev(RequestsPerMinute, 1)) * 100, 1),
+    ["Attack Indicator"] = AttackIndicator,
+    ["Recommended Action"] = case(
+        AttackIndicator == "🚨 Potential DDoS", "Enable DDoS protection",
+        AttackIndicator == "⚠️ Traffic Spike", "Monitor traffic sources",
+        "Investigate error patterns"
+    )
+
+// -----------------------------------------------------------------------------
+// Application Security Monitoring
+// -----------------------------------------------------------------------------
+
+// SQL Injection Attempt Detection
+requests
+| where timestamp > ago(24h)
+| where url contains_any ("'", "--", "union", "select", "drop", "insert", "update", "delete", "exec", "script")
+| extend 
+    InjectionPattern = case(
+        url contains_any ("' or ", "' union", "'; drop"), "SQL Injection",
+        url contains_any ("<script", "javascript:", "onclick="), "XSS Attempt",
+        url contains_any ("../", "..\\", "/etc/passwd"), "Path Traversal",
+        url contains_any ("cmd=", "exec=", "system("), "Command Injection",
+        "Suspicious Input"
+    )
+| summarize 
+    AttackAttempts = count(),
+    UniqueIPs = dcount(client_IP),
+    TargetedEndpoints = dcount(operation_Name),
+    SuccessfulAttempts = countif(success == true and resultCode == "200"),
+    FirstAttempt = min(timestamp),
+    LastAttempt = max(timestamp),
+    SampleURL = any(url)
+by client_IP, InjectionPattern
+| extend 
+    SuccessRate = round((SuccessfulAttempts * 100.0) / AttackAttempts, 1),
+    ThreatLevel = case(
+        SuccessfulAttempts > 0, "🚨 Successful Attack",
+        AttackAttempts > 10, "⚠️ Persistent Attacker",
+        "🔍 Probing"
+    )
+| sort by SuccessfulAttempts desc, AttackAttempts desc
+| project 
+    ["Attacker IP"] = client_IP,
+    ["Attack Type"] = InjectionPattern,
+    ["Attempts"] = AttackAttempts,
+    ["Successful"] = SuccessfulAttempts,
+    ["Success Rate %"] = SuccessRate,
+    ["Endpoints Targeted"] = TargetedEndpoints,
+    ["Threat Level"] = ThreatLevel,
+    ["Duration"] = format_timespan(LastAttempt - FirstAttempt, "hh:mm"),
+    ["Sample Attack"] = substring(SampleURL, 0, 100)
+
+// Anomalous Error Patterns
+exceptions
+| where timestamp > ago(4h)
+| extend ErrorCategory = case(
+    type contains_any ("Security", "Unauthorized", "Forbidden"), "Security",
+    type contains_any ("Sql", "Database", "Connection"), "Database",
+    type contains_any ("Timeout", "Network", "Http"), "Network",
+    type contains_any ("Memory", "OutOfMemory", "Stack"), "Resource",
+    "Application"
+)
+| summarize 
+    ErrorCount = count(),
+    UniqueUsers = dcount(user_Id),
+    UniqueOperations = dcount(operation_Name),
+    ErrorRate = count() / toscalar(requests | where timestamp > ago(4h) | count()) * 100.0,
+    SampleMessage = any(message)
+by ErrorCategory, type, cloud_RoleName
+| extend 
+    Severity = case(
+        ErrorCategory == "Security" and ErrorCount > 10, "🚨 Critical",
+        ErrorCategory == "Security", "⚠️ High",
+        ErrorCount > 100, "🟡 Medium",
+        "🟢 Low"
+    )
+| sort by case(ErrorCategory == "Security", 1, 2), ErrorCount desc
+| project 
+    ["Error Category"] = ErrorCategory,
+    ["Exception Type"] = type,
+    ["Service"] = cloud_RoleName,
+    ["Count"] = ErrorCount,
+    ["Unique Users"] = UniqueUsers,
+    ["Operations Affected"] = UniqueOperations,
+    ["Severity"] = Severity,
+    ["Sample Message"] = substring(SampleMessage, 0, 150),
+    ["Investigation Priority"] = case(
+        ErrorCategory == "Security", "🎯 Immediate",
+        ErrorCount > 50, "📋 High",
+        "📝 Standard"
+    )
+
+// -----------------------------------------------------------------------------
+// Compliance and Audit Logging
+// -----------------------------------------------------------------------------
+
+// Data Access Audit Log
+requests
+| where timestamp > ago(24h)
+| where operation_Name contains_any ("GetUser", "ListUsers", "GetCustomer", "Export", "Download")
+| extend 
+    DataType = case(
+        operation_Name contains "User", "User Data",
+        operation_Name contains "Customer", "Customer Data", 
+        operation_Name contains_any ("Export", "Download"), "Bulk Data",
+        "Other"
+    ),
+    AccessMethod = case(
+        url contains "api", "API",
+        url contains "download", "Direct Download",
+        "Web Interface"
+    )
+| summarize 
+    AccessCount = count(),
+    FirstAccess = min(timestamp),
+    LastAccess = max(timestamp),
+    UniqueUsers = dcount(user_Id),
+    SuccessfulAccess = countif(success == true)
+by DataType, AccessMethod, user_Id, client_IP
+| extend 
+    AccessDuration = LastAccess - FirstAccess,
+    SuccessRate = round((SuccessfulAccess * 100.0) / AccessCount, 1)
+| sort by AccessCount desc
+| project 
+    ["User ID"] = user_Id,
+    ["Source IP"] = client_IP,
+    ["Data Type"] = DataType,
+    ["Access Method"] = AccessMethod,
+    ["Access Count"] = AccessCount,
+    ["Success Rate %"] = SuccessRate,
+    ["First Access"] = format_datetime(FirstAccess, "MM/dd HH:mm:ss"),
+    ["Last Access"] = format_datetime(LastAccess, "MM/dd HH:mm:ss"),
+    ["Session Duration"] = format_timespan(AccessDuration, "hh:mm:ss"),
+    ["Compliance Flag"] = case(
+        DataType == "Bulk Data" and AccessCount > 5, "🔍 Review Required",
+        AccessCount > 100, "📋 High Volume Access",
+        "✅ Normal"
+    )
+
+// Administrative Actions Audit
+customEvents
+| where timestamp > ago(7d)
+| where name in ("UserCreated", "UserDeleted", "RoleChanged", "PermissionModified", "ConfigChanged", "SystemSettings")
+| extend 
+    AdminUser = tostring(user_Id),
+    TargetResource = tostring(customDimensions["targetResource"]),
+    ActionDetails = tostring(customDimensions["details"]),
+    Severity = case(
+        name in ("UserDeleted", "SystemSettings"), "High",
+        name in ("RoleChanged", "PermissionModified"), "Medium",
+        "Low"
+    )
+| summarize 
+    ActionCount = count(),
+    ActionTypes = make_set(name),
+    ResourcesModified = dcount(TargetResource),
+    FirstAction = min(timestamp),
+    LastAction = max(timestamp)
+by AdminUser, Severity
+| extend 
+    ActionSpan = LastAction - FirstAction,
+    RiskScore = case(
+        Severity == "High" and ActionCount > 10, 90,
+        Severity == "High" and ActionCount > 5, 70,
+        Severity == "Medium" and ActionCount > 20, 60,
+        40
+    )
+| sort by RiskScore desc, ActionCount desc
+| project 
+    ["Admin User"] = AdminUser,
+    ["Risk Score"] = RiskScore,
+    ["Severity"] = Severity,
+    ["Action Count"] = ActionCount,
+    ["Resources Modified"] = ResourcesModified,
+    ["Action Types"] = strcat(array_length(ActionTypes), " types"),
+    ["Time Span"] = format_timespan(ActionSpan, "dd:hh:mm"),
+    ["Review Status"] = case(
+        RiskScore >= 80, "🚨 Urgent Review",
+        RiskScore >= 60, "⚠️ Review Required",
+        ActionCount > 50, "📋 Periodic Review",
+        "✅ Normal"
+    )
+
+// Failed Operations Security Analysis
+requests
+| where timestamp > ago(12h)
+| where success == false
+| extend 
+    ErrorCategory = case(
+        resultCode in ("401", "403"), "Authentication/Authorization",
+        resultCode in ("404"), "Resource Not Found", 
+        resultCode in ("429"), "Rate Limiting",
+        resultCode in ("500", "502", "503"), "Server Error",
+        "Other Error"
+    )
+| summarize 
+    FailureCount = count(),
+    UniqueUsers = dcount(user_Id),
+    UniqueIPs = dcount(client_IP),
+    OperationsAffected = dcount(operation_Name),
+    TimeSpan = max(timestamp) - min(timestamp)
+by ErrorCategory, resultCode, client_IP
+| where FailureCount > 5  // Focus on significant failure patterns
+| extend 
+    SecurityConcern = case(
+        ErrorCategory == "Authentication/Authorization" and FailureCount > 20, "🚨 Brute Force",
+        ErrorCategory == "Authentication/Authorization" and FailureCount > 10, "⚠️ Auth Issues",
+        ErrorCategory == "Rate Limiting" and FailureCount > 50, "🔍 Rate Limit Abuse",
+        "📊 Operational"
+    )
+| sort by case(ErrorCategory == "Authentication/Authorization", 1, 2), FailureCount desc
+| project 
+    ["Source IP"] = client_IP,
+    ["Error Category"] = ErrorCategory,
+    ["Result Code"] = resultCode,
+    ["Failure Count"] = FailureCount,
+    ["Unique Users"] = UniqueUsers,
+    ["Operations"] = OperationsAffected,
+    ["Duration"] = format_timespan(TimeSpan, "hh:mm"),
+    ["Security Concern"] = SecurityConcern,
+    ["Recommended Action"] = case(
+        SecurityConcern == "🚨 Brute Force", "Block IP + Alert Security",
+        SecurityConcern == "⚠️ Auth Issues", "Investigate Auth System",
+        SecurityConcern == "🔍 Rate Limit Abuse", "Review Rate Limits",
+        "Monitor Trends"
+    )

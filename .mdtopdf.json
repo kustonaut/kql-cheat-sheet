@@ -1,0 +1,21 @@
+{
+  "pdf_options": {
+    "format": "A4",
+    "margin": {
+      "top": "1in",
+      "bottom": "1in",
+      "left": "0.75in",
+      "right": "0.75in"
+    },
+    "displayHeaderFooter": true,
+    "headerTemplate": "<div style=\"font-size: 9px; margin-left: 1cm; color: #999;\">KQL Cheat Sheet for Real Time Intelligence</div>",
+    "footerTemplate": "<div style=\"font-size: 9px; margin: 0 auto; color: #999;\"><span class=\"pageNumber\"></span> of <span class=\"totalPages\"></span></div>",
+    "printBackground": true
+  },
+  "md_file_encoding": "utf-8",
+  "stylesheet_encoding": "utf-8",
+  "stylesheet": [
+    "https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.4.0/github-markdown-light.min.css"
+  ],
+  "css": ".markdown-body { box-sizing: border-box; min-width: 200px; max-width: 980px; margin: 0 auto; padding: 45px; } @media (max-width: 767px) { .markdown-body { padding: 15px; } } h1, h2, h3, h4, h5, h6 { color: #0066cc; border-bottom: 1px solid #e1e4e8; padding-bottom: 0.3em; } code { background-color: #f6f8fa; border-radius: 3px; padding: 0.2em 0.4em; font-size: 85%; } pre { background-color: #f6f8fa; border-radius: 6px; padding: 16px; overflow: auto; } blockquote { padding: 0 1em; color: #6a737d; border-left: 0.25em solid #dfe2e5; } table { border-collapse: collapse; width: 100%; } table th, table td { border: 1px solid #dfe2e5; padding: 6px 13px; } table tr:nth-child(2n) { background-color: #f6f8fa; }"
+}

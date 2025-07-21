@@ -1,0 +1,483 @@
+// Dashboard Queries for Real Time Intelligence
+// Purpose: Power monitoring dashboards with key metrics and visualizations
+// Data Source: requests, exceptions, dependencies, performanceCounters, traces
+// Use Case: Executive dashboards, operational monitoring, capacity planning
+
+// -----------------------------------------------------------------------------
+// Service Health Overview Dashboard
+// -----------------------------------------------------------------------------
+
+// Service Health Summary (15-minute intervals)
+requests
+| where timestamp > ago(4h)
+| extend TimeWindow = bin(timestamp, 15m)
+| summarize 
+    RequestCount = count(),
+    AvgResponseTime = round(avg(duration), 0),
+    P95ResponseTime = round(percentile(duration, 95), 0),
+    ErrorRate = round(countif(success == false) * 100.0 / count(), 2),
+    Users = dcount(user_Id)
+by TimeWindow, cloud_RoleName
+| sort by TimeWindow desc, cloud_RoleName asc
+| project 
+    Time = format_datetime(TimeWindow, "HH:mm"),
+    Service = cloud_RoleName,
+    Requests = RequestCount,
+    ["Avg Response (ms)"] = AvgResponseTime,
+    ["P95 Response (ms)"] = P95ResponseTime,
+    ["Error %"] = ErrorRate,
+    ["Active Users"] = Users,
+    HealthScore = case(
+        ErrorRate > 5 or AvgResponseTime > 2000, "🔴",
+        ErrorRate > 1 or AvgResponseTime > 1000, "🟡",
+        "🟢"
+    )
+
+// Real-time Service Status Grid
+requests
+| where timestamp > ago(5m)
+| summarize 
+    LastRequest = max(timestamp),
+    RequestsPerMin = count() / 5.0,
+    AvgDuration = avg(duration),
+    ErrorCount = countif(success == false),
+    TotalRequests = count()
+by cloud_RoleName
+| extend 
+    Status = case(
+        ago(2m) > LastRequest, "Offline",
+        ErrorCount > 0, "Degraded", 
+        "Healthy"
+    ),
+    StatusIcon = case(
+        Status == "Offline", "⛔",
+        Status == "Degraded", "⚠️",
+        "✅"
+    ),
+    ResponseHealth = case(
+        AvgDuration > 3000, "Slow",
+        AvgDuration > 1000, "Medium",
+        "Fast"
+    )
+| project 
+    Service = cloud_RoleName,
+    Status = strcat(StatusIcon, " ", Status),
+    ["Req/Min"] = round(RequestsPerMin, 1),
+    ["Avg (ms)"] = round(AvgDuration, 0),
+    ["Errors"] = ErrorCount,
+    ["Last Seen"] = format_datetime(LastRequest, "HH:mm:ss")
+| sort by Service asc
+
+// Top 10 Slowest Operations
+requests
+| where timestamp > ago(1h)
+| where success == true  // Focus on successful requests
+| summarize 
+    CallCount = count(),
+    AvgDuration = avg(duration),
+    P50 = percentile(duration, 50),
+    P95 = percentile(duration, 95),
+    P99 = percentile(duration, 99)
+by operation_Name, cloud_RoleName
+| where CallCount >= 10  // Minimum volume for significance
+| sort by AvgDuration desc
+| take 10
+| project 
+    Rank = row_number(),
+    Operation = operation_Name,
+    Service = cloud_RoleName,
+    Calls = CallCount,
+    ["Avg (ms)"] = round(AvgDuration, 0),
+    ["P50 (ms)"] = round(P50, 0),
+    ["P95 (ms)"] = round(P95, 0),
+    ["P99 (ms)"] = round(P99, 0)
+
+// -----------------------------------------------------------------------------
+// Error Analysis Dashboard
+// -----------------------------------------------------------------------------
+
+// Error Rate Trend (hourly)
+requests
+| where timestamp > ago(24h)
+| extend TimeWindow = bin(timestamp, 1h)
+| summarize 
+    TotalRequests = count(),
+    ErrorRequests = countif(success == false)
+by TimeWindow
+| extend ErrorRate = round((ErrorRequests * 100.0) / TotalRequests, 2)
+| sort by TimeWindow asc
+| project 
+    Hour = format_datetime(TimeWindow, "MM/dd HH:mm"),
+    ["Total Requests"] = TotalRequests,
+    ["Failed Requests"] = ErrorRequests,
+    ["Error Rate %"] = ErrorRate,
+    Trend = case(
+        ErrorRate > prev(ErrorRate), "📈 Increasing",
+        ErrorRate < prev(ErrorRate), "📉 Decreasing",
+        "➡️ Stable"
+    )
+
+// Top Error Types by Service
+exceptions
+| where timestamp > ago(24h)
+| summarize 
+    ExceptionCount = count(),
+    UniqueUsers = dcount(user_Id),
+    SampleMessage = any(message),
+    FirstOccurrence = min(timestamp),
+    LastOccurrence = max(timestamp)
+by type, cloud_RoleName
+| sort by ExceptionCount desc
+| take 20
+| project 
+    Service = cloud_RoleName,
+    ["Exception Type"] = type,
+    Count = ExceptionCount,
+    ["Affected Users"] = UniqueUsers,
+    ["Sample Message"] = substring(SampleMessage, 0, 100),
+    ["First Seen"] = format_datetime(FirstOccurrence, "MM/dd HH:mm"),
+    ["Last Seen"] = format_datetime(LastOccurrence, "MM/dd HH:mm")
+
+// Failed Request Analysis
+requests
+| where timestamp > ago(4h) and success == false
+| extend TimeWindow = bin(timestamp, 30m)
+| summarize 
+    FailureCount = count(),
+    UniqueOperations = dcount(operation_Name),
+    CommonResultCode = mode(resultCode),
+    SampleURL = any(url)
+by TimeWindow, cloud_RoleName
+| sort by TimeWindow desc, FailureCount desc
+| project 
+    Time = format_datetime(TimeWindow, "HH:mm"),
+    Service = cloud_RoleName,
+    Failures = FailureCount,
+    Operations = UniqueOperations,
+    ["Common Code"] = CommonResultCode,
+    ["Sample URL"] = substring(SampleURL, 0, 50)
+
+// -----------------------------------------------------------------------------
+// Performance Analytics Dashboard
+// -----------------------------------------------------------------------------
+
+// Response Time Distribution (percentiles)
+requests
+| where timestamp > ago(2h) and success == true
+| summarize 
+    P50 = percentile(duration, 50),
+    P75 = percentile(duration, 75),
+    P90 = percentile(duration, 90),
+    P95 = percentile(duration, 95),
+    P99 = percentile(duration, 99),
+    Count = count()
+by cloud_RoleName
+| sort by P95 desc
+| project 
+    Service = cloud_RoleName,
+    Requests = Count,
+    ["P50 (ms)"] = round(P50, 0),
+    ["P75 (ms)"] = round(P75, 0),
+    ["P90 (ms)"] = round(P90, 0),
+    ["P95 (ms)"] = round(P95, 0),
+    ["P99 (ms)"] = round(P99, 0),
+    Grade = case(
+        P95 < 500, "A",
+        P95 < 1000, "B", 
+        P95 < 2000, "C",
+        P95 < 5000, "D",
+        "F"
+    )
+
+// Hourly Performance Comparison (last 24h vs previous 24h)
+let Current24h = requests
+| where timestamp > ago(24h)
+| extend TimeSlot = bin(timestamp, 1h)
+| summarize 
+    CurrentAvgDuration = avg(duration),
+    CurrentRequestCount = count()
+by TimeSlot;
+let Previous24h = requests
+| where timestamp between (ago(48h) .. ago(24h))
+| extend TimeSlot = bin(timestamp + 24h, 1h)  // Align with current period
+| summarize 
+    PreviousAvgDuration = avg(duration),
+    PreviousRequestCount = count()
+by TimeSlot;
+Current24h
+| join kind=leftouter (Previous24h) on TimeSlot
+| extend 
+    DurationChange = round(((CurrentAvgDuration - PreviousAvgDuration) / PreviousAvgDuration) * 100, 1),
+    VolumeChange = round(((CurrentRequestCount - PreviousRequestCount) / toreal(PreviousRequestCount)) * 100, 1)
+| project 
+    Hour = format_datetime(TimeSlot, "MM/dd HH:mm"),
+    ["Current Avg (ms)"] = round(CurrentAvgDuration, 0),
+    ["Previous Avg (ms)"] = round(PreviousAvgDuration, 0),
+    ["Duration Change %"] = DurationChange,
+    ["Current Volume"] = CurrentRequestCount,
+    ["Previous Volume"] = PreviousRequestCount,
+    ["Volume Change %"] = VolumeChange,
+    Trend = case(
+        DurationChange > 20, "🔴 Slower",
+        DurationChange > 5, "🟡 Slightly Slower",
+        DurationChange < -5, "🟢 Faster",
+        "➡️ Similar"
+    )
+| sort by TimeSlot desc
+
+// -----------------------------------------------------------------------------
+// Dependency Health Dashboard
+// -----------------------------------------------------------------------------
+
+// Dependency Performance Summary
+dependencies
+| where timestamp > ago(2h)
+| summarize 
+    CallCount = count(),
+    SuccessRate = round(countif(success == true) * 100.0 / count(), 2),
+    AvgDuration = round(avg(duration), 0),
+    P95Duration = round(percentile(duration, 95), 0),
+    FailureCount = countif(success == false)
+by type, target
+| sort by CallCount desc
+| project 
+    ["Dependency Type"] = type,
+    Target = target,
+    Calls = CallCount,
+    ["Success %"] = SuccessRate,
+    ["Avg (ms)"] = AvgDuration,
+    ["P95 (ms)"] = P95Duration,
+    Failures = FailureCount,
+    Health = case(
+        SuccessRate < 95, "🔴 Poor",
+        SuccessRate < 99, "🟡 Fair",
+        "🟢 Good"
+    )
+
+// Dependency Failure Patterns
+dependencies
+| where timestamp > ago(6h) and success == false
+| extend TimeWindow = bin(timestamp, 30m)
+| summarize 
+    FailureCount = count(),
+    CommonResultCode = mode(resultCode),
+    SampleData = any(data)
+by TimeWindow, type, target
+| sort by TimeWindow desc, FailureCount desc
+| project 
+    Time = format_datetime(TimeWindow, "HH:mm"),
+    Type = type,
+    Target = target,
+    Failures = FailureCount,
+    ["Result Code"] = CommonResultCode,
+    ["Sample Data"] = substring(SampleData, 0, 100)
+
+// -----------------------------------------------------------------------------
+// User Experience Dashboard
+// -----------------------------------------------------------------------------
+
+// Page Load Performance (client-side)
+pageViews
+| where timestamp > ago(2h)
+| summarize 
+    PageViews = count(),
+    AvgLoadTime = round(avg(duration), 0),
+    P95LoadTime = round(percentile(duration, 95), 0),
+    UniqueUsers = dcount(user_Id),
+    BounceRate = round(countif(duration < 1000) * 100.0 / count(), 1)
+by name
+| sort by PageViews desc
+| take 15
+| project 
+    ["Page Name"] = name,
+    Views = PageViews,
+    ["Unique Users"] = UniqueUsers,
+    ["Avg Load (ms)"] = AvgLoadTime,
+    ["P95 Load (ms)"] = P95LoadTime,
+    ["Quick Load %"] = BounceRate,
+    Experience = case(
+        P95LoadTime < 2000, "🟢 Excellent",
+        P95LoadTime < 4000, "🟡 Good",
+        P95LoadTime < 8000, "🟠 Fair",
+        "🔴 Poor"
+    )
+
+// User Journey Analysis
+requests
+| where timestamp > ago(4h)
+| where isnotempty(user_Id)
+| summarize 
+    SessionDuration = max(timestamp) - min(timestamp),
+    RequestCount = count(),
+    UniqueOperations = dcount(operation_Name),
+    ErrorCount = countif(success == false),
+    AvgResponseTime = avg(duration)
+by user_Id
+| where SessionDuration > 1m  // Filter out very short sessions
+| extend 
+    SessionMinutes = round(SessionDuration / 1m, 1),
+    ErrorRate = round((ErrorCount * 100.0) / RequestCount, 1)
+| summarize 
+    TotalUsers = count(),
+    AvgSessionMinutes = round(avg(SessionMinutes), 1),
+    AvgRequestsPerUser = round(avg(RequestCount), 1),
+    AvgOperationsPerUser = round(avg(UniqueOperations), 1),
+    UsersWithErrors = countif(ErrorCount > 0),
+    AvgUserErrorRate = round(avg(ErrorRate), 1)
+| project 
+    ["Active Users"] = TotalUsers,
+    ["Avg Session (min)"] = AvgSessionMinutes,
+    ["Avg Requests/User"] = AvgRequestsPerUser,
+    ["Avg Operations/User"] = AvgOperationsPerUser,
+    ["Users with Errors"] = UsersWithErrors,
+    ["Avg Error Rate %"] = AvgUserErrorRate,
+    ["User Satisfaction"] = case(
+        AvgUserErrorRate < 1, "🟢 High",
+        AvgUserErrorRate < 3, "🟡 Medium",
+        "🔴 Low"
+    )
+
+// -----------------------------------------------------------------------------
+// Infrastructure Health Dashboard
+// -----------------------------------------------------------------------------
+
+// Server Performance Summary
+performanceCounters
+| where TimeGenerated > ago(1h)
+| where CounterName in ("% Processor Time", "Available MBytes", "% Disk Time")
+| where InstanceName == "_Total" or CounterName == "Available MBytes"
+| summarize AvgValue = avg(CounterValue) by Computer, CounterName
+| evaluate pivot(CounterName, AvgValue)
+| extend 
+    CPUPercent = round(column_ifexists("% Processor Time", 0.0), 1),
+    MemoryMB = round(column_ifexists("Available MBytes", 0.0), 0),
+    DiskPercent = round(column_ifexists("% Disk Time", 0.0), 1)
+| project 
+    Server = Computer,
+    ["CPU %"] = CPUPercent,
+    ["Free Memory (MB)"] = MemoryMB,
+    ["Disk %"] = DiskPercent,
+    Status = case(
+        CPUPercent > 90 or MemoryMB < 512 or DiskPercent > 90, "🔴 Critical",
+        CPUPercent > 80 or MemoryMB < 1024 or DiskPercent > 80, "🟡 Warning",
+        "🟢 Healthy"
+    )
+| sort by Status asc, Server asc
+
+// Network and Connectivity Health
+dependencies
+| where timestamp > ago(1h)
+| where type == "Http"
+| summarize 
+    TotalCalls = count(),
+    SuccessfulCalls = countif(success == true),
+    AvgResponseTime = round(avg(duration), 0),
+    TimeoutCount = countif(resultCode == "Timeout")
+by target
+| extend 
+    SuccessRate = round((SuccessfulCalls * 100.0) / TotalCalls, 2),
+    TimeoutRate = round((TimeoutCount * 100.0) / TotalCalls, 2)
+| sort by TotalCalls desc
+| take 10
+| project 
+    ["External Service"] = target,
+    Calls = TotalCalls,
+    ["Success Rate %"] = SuccessRate,
+    ["Avg Response (ms)"] = AvgResponseTime,
+    ["Timeout Rate %"] = TimeoutRate,
+    Connectivity = case(
+        SuccessRate < 95 or TimeoutRate > 5, "🔴 Poor",
+        SuccessRate < 99 or TimeoutRate > 1, "🟡 Fair",
+        "🟢 Excellent"
+    )
+
+// -----------------------------------------------------------------------------
+// Business Metrics Dashboard
+// -----------------------------------------------------------------------------
+
+// Transaction Volume and Revenue Trends
+customEvents
+| where timestamp > ago(24h)
+| where name == "Purchase" or name == "Subscription" or name == "Transaction"
+| extend 
+    Amount = toreal(customMeasurements["amount"]),
+    TimeWindow = bin(timestamp, 1h)
+| summarize 
+    TransactionCount = count(),
+    TotalRevenue = sum(Amount),
+    AvgTransactionValue = avg(Amount),
+    UniqueCustomers = dcount(user_Id)
+by TimeWindow
+| sort by TimeWindow asc
+| extend 
+    RevenueChange = TotalRevenue - prev(TotalRevenue),
+    VolumeChange = TransactionCount - prev(TransactionCount)
+| project 
+    Hour = format_datetime(TimeWindow, "MM/dd HH:mm"),
+    Transactions = TransactionCount,
+    ["Revenue ($)"] = round(TotalRevenue, 2),
+    ["Avg Value ($)"] = round(AvgTransactionValue, 2),
+    Customers = UniqueCustomers,
+    ["Revenue Δ"] = round(RevenueChange, 2),
+    ["Volume Δ"] = VolumeChange,
+    Trend = case(
+        RevenueChange > 0 and VolumeChange > 0, "📈 Growing",
+        RevenueChange < 0 or VolumeChange < 0, "📉 Declining",
+        "➡️ Stable"
+    )
+
+// Feature Usage Analytics
+customEvents
+| where timestamp > ago(7d)
+| where name != "PageView"  // Exclude page views
+| summarize 
+    EventCount = count(),
+    UniqueUsers = dcount(user_Id),
+    DailyAverage = count() / 7.0
+by name
+| sort by EventCount desc
+| take 15
+| project 
+    Feature = name,
+    ["Total Events"] = EventCount,
+    ["Unique Users"] = UniqueUsers,
+    ["Daily Avg"] = round(DailyAverage, 1),
+    ["Events/User"] = round(toreal(EventCount) / UniqueUsers, 1),
+    Popularity = case(
+        EventCount > 10000, "🔥 High",
+        EventCount > 1000, "📊 Medium",
+        EventCount > 100, "📉 Low",
+        "🚫 Minimal"
+    )
+
+// -----------------------------------------------------------------------------
+// Real-time Operations Summary
+// -----------------------------------------------------------------------------
+
+// Live System Health (last 5 minutes)
+let SystemHealth = requests
+| where timestamp > ago(5m)
+| summarize 
+    TotalRequests = count(),
+    ErrorCount = countif(success == false),
+    AvgResponseTime = avg(duration)
+| extend 
+    ErrorRate = round((ErrorCount * 100.0) / TotalRequests, 2),
+    RequestsPerMinute = round(TotalRequests / 5.0, 1);
+let InfraHealth = performanceCounters
+| where TimeGenerated > ago(5m)
+| where CounterName == "% Processor Time" and InstanceName == "_Total"
+| summarize AvgCPU = avg(CounterValue);
+SystemHealth
+| extend AvgCPU = toscalar(InfraHealth)
+| project 
+    ["🔄 Requests/Min"] = RequestsPerMinute,
+    ["⚡ Avg Response"] = strcat(round(AvgResponseTime, 0), " ms"),
+    ["❌ Error Rate"] = strcat(ErrorRate, "%"),
+    ["🖥️ CPU Usage"] = strcat(round(AvgCPU, 1), "%"),
+    ["⏰ Last Update"] = format_datetime(now(), "HH:mm:ss"),
+    ["🚦 Overall Status"] = case(
+        ErrorRate > 5 or AvgResponseTime > 3000 or AvgCPU > 90, "🔴 Critical",
+        ErrorRate > 2 or AvgResponseTime > 1500 or AvgCPU > 80, "🟡 Warning", 
+        "🟢 Healthy"
+    )

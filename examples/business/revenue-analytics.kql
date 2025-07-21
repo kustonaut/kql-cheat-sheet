@@ -1,0 +1,494 @@
+// Revenue and Commerce Analytics for Real Time Intelligence
+// Purpose: Track financial performance, conversion rates, and customer value
+// Data Source: customEvents, requests, pageViews, traces
+// Use Case: Business intelligence, financial reporting, growth analysis
+
+// -----------------------------------------------------------------------------
+// Daily Revenue Tracking
+// -----------------------------------------------------------------------------
+
+// Daily Revenue Summary with Trends
+customEvents
+| where timestamp > ago(30d)
+| where name in ("Purchase", "Subscription", "Payment")
+| extend 
+    Amount = toreal(customMeasurements["amount"]),
+    Currency = tostring(customDimensions["currency"]),
+    PaymentMethod = tostring(customDimensions["paymentMethod"])
+| where isnotnull(Amount) and Amount > 0
+| extend Day = bin(timestamp, 1d)
+| summarize 
+    DailyRevenue = sum(Amount),
+    TransactionCount = count(),
+    UniqueCustomers = dcount(user_Id),
+    AvgOrderValue = avg(Amount)
+by Day
+| sort by Day asc
+| extend 
+    RevenueGrowth = round(((DailyRevenue - prev(DailyRevenue, 1)) / prev(DailyRevenue, 1)) * 100, 1),
+    TransactionGrowth = round(((TransactionCount - prev(TransactionCount, 1)) / prev(TransactionCount, 1)) * 100, 1),
+    CustomerGrowth = round(((UniqueCustomers - prev(UniqueCustomers, 1)) / prev(UniqueCustomers, 1)) * 100, 1)
+| project 
+    Date = format_datetime(Day, "MM/dd"),
+    ["Revenue ($)"] = round(DailyRevenue, 2),
+    Transactions = TransactionCount,
+    Customers = UniqueCustomers,
+    ["AOV ($)"] = round(AvgOrderValue, 2),
+    ["Revenue Growth %"] = RevenueGrowth,
+    ["Transaction Growth %"] = TransactionGrowth,
+    ["Customer Growth %"] = CustomerGrowth,
+    Trend = case(
+        RevenueGrowth > 5, "📈 Strong Growth",
+        RevenueGrowth > 0, "🟢 Growth",
+        RevenueGrowth > -5, "🟡 Stable",
+        "🔴 Decline"
+    )
+
+// Payment Method Performance Analysis
+customEvents
+| where timestamp > ago(30d)
+| where name == "Purchase"
+| extend 
+    Amount = toreal(customMeasurements["amount"]),
+    PaymentMethod = tostring(customDimensions["paymentMethod"]),
+    PaymentStatus = tostring(customDimensions["paymentStatus"])
+| where isnotnull(Amount) and Amount > 0
+| summarize 
+    TotalRevenue = sum(Amount),
+    TransactionCount = count(),
+    SuccessfulTransactions = countif(PaymentStatus == "Success"),
+    FailedTransactions = countif(PaymentStatus == "Failed"),
+    AvgTransactionValue = avg(Amount),
+    UniqueCustomers = dcount(user_Id)
+by PaymentMethod
+| extend 
+    SuccessRate = round((SuccessfulTransactions * 100.0) / TransactionCount, 1),
+    FailureRate = round((FailedTransactions * 100.0) / TransactionCount, 1),
+    RevenueShare = round((TotalRevenue * 100.0) / toscalar(
+        customEvents 
+        | where timestamp > ago(30d) and name == "Purchase"
+        | extend Amount = toreal(customMeasurements["amount"])
+        | summarize sum(Amount)
+    ), 1)
+| sort by TotalRevenue desc
+| project 
+    ["Payment Method"] = PaymentMethod,
+    ["Revenue ($)"] = round(TotalRevenue, 2),
+    ["Share %"] = RevenueShare,
+    Transactions = TransactionCount,
+    ["Success Rate %"] = SuccessRate,
+    ["Failure Rate %"] = FailureRate,
+    ["AOV ($)"] = round(AvgTransactionValue, 2),
+    Customers = UniqueCustomers,
+    Performance = case(
+        SuccessRate > 98 and RevenueShare > 20, "🟢 Excellent",
+        SuccessRate > 95 and RevenueShare > 10, "🟡 Good",
+        SuccessRate > 90, "🟠 Fair",
+        "🔴 Needs Attention"
+    )
+
+// -----------------------------------------------------------------------------
+// Product Performance Analytics
+// -----------------------------------------------------------------------------
+
+// Product Revenue Ranking
+customEvents
+| where timestamp > ago(30d)
+| where name == "Purchase"
+| extend 
+    ProductId = tostring(customDimensions["productId"]),
+    ProductName = tostring(customDimensions["productName"]),
+    ProductCategory = tostring(customDimensions["productCategory"]),
+    Amount = toreal(customMeasurements["amount"]),
+    Quantity = toint(customMeasurements["quantity"])
+| where isnotnull(Amount) and isnotnull(ProductId)
+| summarize 
+    TotalRevenue = sum(Amount),
+    TotalQuantity = sum(Quantity),
+    Orders = count(),
+    UniqueCustomers = dcount(user_Id),
+    AvgOrderValue = avg(Amount),
+    FirstSale = min(timestamp),
+    LastSale = max(timestamp)
+by ProductId, ProductName, ProductCategory
+| extend 
+    DaysOnMarket = datetime_diff('day', LastSale, FirstSale) + 1,
+    RevenuePerDay = round(TotalRevenue / DaysOnMarket, 2),
+    OrdersPerDay = round(toreal(Orders) / DaysOnMarket, 1)
+| sort by TotalRevenue desc
+| extend Rank = row_number()
+| project 
+    Rank,
+    Product = ProductName,
+    Category = ProductCategory,
+    ["Revenue ($)"] = round(TotalRevenue, 2),
+    ["Quantity Sold"] = TotalQuantity,
+    Orders,
+    Customers = UniqueCustomers,
+    ["AOV ($)"] = round(AvgOrderValue, 2),
+    ["Revenue/Day ($)"] = RevenuePerDay,
+    ["Days Active"] = DaysOnMarket,
+    Performance = case(
+        Rank <= 5, "🏆 Top Performer",
+        Rank <= 10, "🥇 High Performer",
+        Rank <= 20, "📈 Good Performer",
+        "📊 Standard"
+    )
+
+// Product Category Analysis
+customEvents
+| where timestamp > ago(30d)
+| where name == "Purchase"
+| extend 
+    ProductCategory = tostring(customDimensions["productCategory"]),
+    Amount = toreal(customMeasurements["amount"])
+| where isnotnull(Amount) and isnotempty(ProductCategory)
+| summarize 
+    CategoryRevenue = sum(Amount),
+    CategoryOrders = count(),
+    CategoryCustomers = dcount(user_Id),
+    AvgOrderValue = avg(Amount)
+by ProductCategory
+| extend 
+    RevenueShare = round((CategoryRevenue * 100.0) / toscalar(
+        customEvents 
+        | where timestamp > ago(30d) and name == "Purchase"
+        | extend Amount = toreal(customMeasurements["amount"])
+        | summarize sum(Amount)
+    ), 1),
+    OrderShare = round((CategoryOrders * 100.0) / toscalar(
+        customEvents 
+        | where timestamp > ago(30d) and name == "Purchase"
+        | summarize count()
+    ), 1)
+| sort by CategoryRevenue desc
+| project 
+    Category = ProductCategory,
+    ["Revenue ($)"] = round(CategoryRevenue, 2),
+    ["Revenue Share %"] = RevenueShare,
+    Orders = CategoryOrders,
+    ["Order Share %"] = OrderShare,
+    Customers = CategoryCustomers,
+    ["AOV ($)"] = round(AvgOrderValue, 2),
+    ["Category Status"] = case(
+        RevenueShare > 25, "🎯 Core Category",
+        RevenueShare > 15, "💰 Major Category",
+        RevenueShare > 5, "📊 Growing Category",
+        "🔍 Niche Category"
+    )
+
+// -----------------------------------------------------------------------------
+// Customer Value Analysis
+// -----------------------------------------------------------------------------
+
+// Customer Segmentation by Value
+let CustomerMetrics = customEvents
+| where timestamp > ago(90d)
+| where name == "Purchase"
+| extend Amount = toreal(customMeasurements["amount"])
+| where isnotnull(Amount)
+| summarize 
+    TotalSpent = sum(Amount),
+    OrderCount = count(),
+    FirstOrder = min(timestamp),
+    LastOrder = max(timestamp),
+    AvgOrderValue = avg(Amount)
+by user_Id
+| extend 
+    CustomerLifetimeDays = datetime_diff('day', LastOrder, FirstOrder) + 1,
+    DaysSinceLastOrder = datetime_diff('day', now(), LastOrder),
+    OrderFrequency = round(OrderCount / (CustomerLifetimeDays / 30.0), 1)  // Orders per month
+| extend 
+    CustomerSegment = case(
+        TotalSpent > 1000 and OrderFrequency > 2, "VIP",
+        TotalSpent > 500 and OrderFrequency > 1, "High Value",
+        TotalSpent > 200 or OrderFrequency > 0.5, "Regular",
+        DaysSinceLastOrder > 30, "Churned",
+        "New"
+    );
+CustomerMetrics
+| summarize 
+    CustomerCount = count(),
+    TotalRevenue = sum(TotalSpent),
+    AvgLifetimeValue = round(avg(TotalSpent), 2),
+    AvgOrderValue = round(avg(AvgOrderValue), 2),
+    AvgOrderFrequency = round(avg(OrderFrequency), 1),
+    AvgCustomerLifetime = round(avg(CustomerLifetimeDays), 0)
+by CustomerSegment
+| extend 
+    RevenueShare = round((TotalRevenue * 100.0) / toscalar(CustomerMetrics | summarize sum(TotalSpent)), 1),
+    RevenuePerCustomer = round(TotalRevenue / CustomerCount, 2)
+| sort by TotalRevenue desc
+| project 
+    Segment = CustomerSegment,
+    Customers = CustomerCount,
+    ["Total Revenue ($)"] = round(TotalRevenue, 2),
+    ["Revenue Share %"] = RevenueShare,
+    ["Avg LTV ($)"] = AvgLifetimeValue,
+    ["Avg AOV ($)"] = AvgOrderValue,
+    ["Orders/Month"] = AvgOrderFrequency,
+    ["Avg Lifetime (days)"] = AvgCustomerLifetime,
+    Priority = case(
+        CustomerSegment == "VIP", "🌟 Highest",
+        CustomerSegment == "High Value", "🎯 High",
+        CustomerSegment == "Regular", "📊 Medium",
+        CustomerSegment == "Churned", "🔄 Retention",
+        "🆕 Acquisition"
+    )
+
+// Customer Churn Analysis
+let RecentCustomers = customEvents
+| where timestamp > ago(90d)
+| where name == "Purchase"
+| summarize LastPurchase = max(timestamp) by user_Id
+| extend DaysSinceLastPurchase = datetime_diff('day', now(), LastPurchase);
+let CustomerBehavior = customEvents
+| where timestamp > ago(90d)
+| where name == "Purchase"
+| extend Amount = toreal(customMeasurements["amount"])
+| summarize 
+    TotalSpent = sum(Amount),
+    OrderCount = count(),
+    AvgDaysBetweenOrders = avg(datetime_diff('day', timestamp, prev(timestamp, 1)))
+by user_Id;
+RecentCustomers
+| join kind=inner (CustomerBehavior) on user_Id
+| extend 
+    ChurnRisk = case(
+        DaysSinceLastPurchase > (AvgDaysBetweenOrders * 2), "High Risk",
+        DaysSinceLastPurchase > AvgDaysBetweenOrders, "Medium Risk",
+        "Low Risk"
+    ),
+    CustomerValue = case(
+        TotalSpent > 500, "High Value",
+        TotalSpent > 200, "Medium Value",
+        "Low Value"
+    )
+| summarize 
+    CustomerCount = count(),
+    AvgLifetimeValue = round(avg(TotalSpent), 2),
+    AvgDaysSinceLastOrder = round(avg(DaysSinceLastPurchase), 0),
+    AvgOrderCount = round(avg(OrderCount), 1)
+by ChurnRisk, CustomerValue
+| sort by ChurnRisk desc, CustomerValue desc
+| project 
+    ["Churn Risk"] = ChurnRisk,
+    ["Customer Value"] = CustomerValue,
+    ["Customer Count"] = CustomerCount,
+    ["Avg LTV ($)"] = AvgLifetimeValue,
+    ["Days Since Last Order"] = AvgDaysSinceLastOrder,
+    ["Avg Orders"] = AvgOrderCount,
+    ["Revenue at Risk ($)"] = round(CustomerCount * AvgLifetimeValue, 2),
+    ["Action Required"] = case(
+        ChurnRisk == "High Risk" and CustomerValue == "High Value", "🚨 Urgent Retention",
+        ChurnRisk == "High Risk", "⚠️ Retention Campaign",
+        ChurnRisk == "Medium Risk" and CustomerValue == "High Value", "📞 Personal Outreach",
+        ChurnRisk == "Medium Risk", "📧 Email Campaign",
+        "✅ Monitor"
+    )
+
+// -----------------------------------------------------------------------------
+// Pricing and Promotions Analytics
+// -----------------------------------------------------------------------------
+
+// Discount Impact Analysis
+customEvents
+| where timestamp > ago(30d)
+| where name == "Purchase"
+| extend 
+    Amount = toreal(customMeasurements["amount"]),
+    DiscountCode = tostring(customDimensions["discountCode"]),
+    DiscountAmount = toreal(customMeasurements["discountAmount"]),
+    OriginalAmount = toreal(customMeasurements["originalAmount"])
+| extend 
+    HasDiscount = isnotempty(DiscountCode),
+    DiscountPercent = case(
+        isnotnull(OriginalAmount) and OriginalAmount > 0, 
+        round((DiscountAmount / OriginalAmount) * 100, 1),
+        0.0
+    )
+| summarize 
+    Orders = count(),
+    TotalRevenue = sum(Amount),
+    TotalDiscount = sum(DiscountAmount),
+    AvgOrderValue = avg(Amount),
+    UniqueCustomers = dcount(user_Id)
+by HasDiscount, DiscountCode
+| extend 
+    EffectiveDiscount = round((TotalDiscount / (TotalRevenue + TotalDiscount)) * 100, 1),
+    RevenuePerCustomer = round(TotalRevenue / UniqueCustomers, 2)
+| sort by TotalRevenue desc
+| project 
+    ["Discount Status"] = case(HasDiscount, strcat("✅ ", DiscountCode), "❌ No Discount"),
+    Orders,
+    ["Revenue ($)"] = round(TotalRevenue, 2),
+    ["Discount Given ($)"] = round(TotalDiscount, 2),
+    ["Effective Discount %"] = EffectiveDiscount,
+    ["AOV ($)"] = round(AvgOrderValue, 2),
+    Customers = UniqueCustomers,
+    ["Revenue/Customer ($)"] = RevenuePerCustomer,
+    Performance = case(
+        not(HasDiscount), "🎯 Full Price",
+        EffectiveDiscount < 10 and TotalRevenue > 5000, "🟢 Profitable",
+        EffectiveDiscount < 20 and TotalRevenue > 2000, "🟡 Acceptable",
+        "🔴 High Cost"
+    )
+
+// Price Sensitivity Analysis
+let PricePoints = customEvents
+| where timestamp > ago(30d)
+| where name == "Purchase"
+| extend Amount = toreal(customMeasurements["amount"])
+| where isnotnull(Amount)
+| extend PriceRange = case(
+    Amount < 25, "$0-24",
+    Amount < 50, "$25-49", 
+    Amount < 100, "$50-99",
+    Amount < 200, "$100-199",
+    Amount < 500, "$200-499",
+    "$500+"
+);
+PricePoints
+| summarize 
+    OrderCount = count(),
+    TotalRevenue = sum(Amount),
+    UniqueCustomers = dcount(user_Id),
+    AvgOrderValue = avg(Amount),
+    ConversionRate = count() * 100.0 / toscalar(
+        requests 
+        | where timestamp > ago(30d) 
+        | where url contains "product" or operation_Name contains "product"
+        | summarize dcount(session_Id)
+    )
+by PriceRange
+| extend 
+    RevenueShare = round((TotalRevenue * 100.0) / toscalar(PricePoints | summarize sum(Amount)), 1),
+    OrderShare = round((OrderCount * 100.0) / toscalar(PricePoints | summarize count()), 1)
+| sort by case(
+    PriceRange == "$0-24", 1,
+    PriceRange == "$25-49", 2,
+    PriceRange == "$50-99", 3,
+    PriceRange == "$100-199", 4,
+    PriceRange == "$200-499", 5,
+    6
+)
+| project 
+    ["Price Range"] = PriceRange,
+    Orders = OrderCount,
+    ["Order Share %"] = OrderShare,
+    ["Revenue ($)"] = round(TotalRevenue, 2),
+    ["Revenue Share %"] = RevenueShare,
+    ["AOV ($)"] = round(AvgOrderValue, 2),
+    Customers = UniqueCustomers,
+    ["Conversion Rate %"] = round(ConversionRate, 2),
+    ["Price Elasticity"] = case(
+        OrderShare > RevenueShare * 1.5, "🟢 Price Sensitive",
+        OrderShare > RevenueShare, "🟡 Somewhat Sensitive",
+        "🔴 Price Insensitive"
+    )
+
+// -----------------------------------------------------------------------------
+// Sales Funnel Analysis
+// -----------------------------------------------------------------------------
+
+// E-commerce Conversion Funnel
+let FunnelData = union
+(
+    pageViews
+    | where timestamp > ago(7d)
+    | where name contains "product" or url contains "product"
+    | summarize Users = dcount(user_Id)
+    | extend Stage = "Product Views", StageOrder = 1
+),
+(
+    customEvents
+    | where timestamp > ago(7d)
+    | where name == "AddToCart"
+    | summarize Users = dcount(user_Id)
+    | extend Stage = "Add to Cart", StageOrder = 2
+),
+(
+    customEvents
+    | where timestamp > ago(7d)
+    | where name == "InitiateCheckout"
+    | summarize Users = dcount(user_Id)
+    | extend Stage = "Initiate Checkout", StageOrder = 3
+),
+(
+    customEvents
+    | where timestamp > ago(7d)
+    | where name == "Purchase"
+    | summarize Users = dcount(user_Id)
+    | extend Stage = "Purchase Complete", StageOrder = 4
+);
+FunnelData
+| sort by StageOrder asc
+| extend 
+    PreviousStageUsers = prev(Users, 1),
+    ConversionRate = round((Users * 100.0) / prev(Users, 1), 1),
+    DropoffRate = round(((prev(Users, 1) - Users) * 100.0) / prev(Users, 1), 1),
+    OverallConversion = round((Users * 100.0) / toscalar(FunnelData | where StageOrder == 1 | project Users), 1)
+| project 
+    Stage,
+    Users,
+    ["Conversion from Previous %"] = case(StageOrder == 1, 100.0, ConversionRate),
+    ["Dropoff Rate %"] = case(StageOrder == 1, 0.0, DropoffRate),
+    ["Overall Conversion %"] = OverallConversion,
+    ["Optimization Priority"] = case(
+        StageOrder == 1, "🔍 Traffic Quality",
+        ConversionRate < 25, "🚨 Critical Bottleneck",
+        ConversionRate < 50, "⚠️ Needs Improvement",
+        ConversionRate < 75, "🟡 Good",
+        "🟢 Excellent"
+    )
+
+// Revenue Attribution by Channel
+requests
+| where timestamp > ago(30d)
+| extend 
+    Channel = case(
+        url contains "utm_source=google", "Google",
+        url contains "utm_source=facebook", "Facebook", 
+        url contains "utm_source=email", "Email",
+        url contains "utm_source=direct", "Direct",
+        url contains "utm_source=organic", "Organic",
+        "Other"
+    )
+| where isnotempty(user_Id)
+| summarize FirstTouch = min(timestamp) by user_Id, Channel
+| join kind=inner (
+    customEvents
+    | where timestamp > ago(30d)
+    | where name == "Purchase"
+    | extend Amount = toreal(customMeasurements["amount"])
+    | where isnotnull(Amount)
+    | project user_Id, PurchaseAmount = Amount, PurchaseTime = timestamp
+) on user_Id
+| where FirstTouch <= PurchaseTime
+| summarize 
+    AttributedRevenue = sum(PurchaseAmount),
+    AttributedCustomers = dcount(user_Id),
+    AttributedOrders = count()
+by Channel
+| extend 
+    RevenueShare = round((AttributedRevenue * 100.0) / toscalar(
+        customEvents 
+        | where timestamp > ago(30d) and name == "Purchase"
+        | extend Amount = toreal(customMeasurements["amount"])
+        | summarize sum(Amount)
+    ), 1),
+    RevenuePerCustomer = round(AttributedRevenue / AttributedCustomers, 2)
+| sort by AttributedRevenue desc
+| project 
+    Channel,
+    ["Revenue ($)"] = round(AttributedRevenue, 2),
+    ["Revenue Share %"] = RevenueShare,
+    ["Customers"] = AttributedCustomers,
+    ["Orders"] = AttributedOrders,
+    ["Revenue/Customer ($)"] = RevenuePerCustomer,
+    ["ROI Category"] = case(
+        RevenuePerCustomer > 200, "🟢 High ROI",
+        RevenuePerCustomer > 100, "🟡 Medium ROI",
+        RevenuePerCustomer > 50, "🟠 Low ROI",
+        "🔴 Negative ROI"
+    )

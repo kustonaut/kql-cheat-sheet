@@ -1,0 +1,323 @@
+// Alerting Queries for Real Time Intelligence
+// Purpose: Define automated alert conditions for monitoring and incident response
+// Data Source: requests, exceptions, dependencies, performanceCounters
+// Use Case: Proactive monitoring, SLA enforcement, automated incident detection
+
+// -----------------------------------------------------------------------------
+// Service Level Alerts
+// -----------------------------------------------------------------------------
+
+// High Error Rate Alert (>5% in last 15 minutes)
+requests
+| where timestamp > ago(15m)
+| summarize 
+    TotalRequests = count(),
+    FailedRequests = countif(success == false)
+by cloud_RoleName
+| where TotalRequests >= 20  // Minimum volume threshold
+| extend ErrorRate = round((FailedRequests * 100.0) / TotalRequests, 2)
+| where ErrorRate > 5.0
+| project 
+    AlertId = strcat("ERR-", cloud_RoleName, "-", bin(now(), 15m)),
+    AlertType = "High Error Rate",
+    Severity = case(ErrorRate > 20, "Critical", ErrorRate > 10, "High", "Medium"),
+    Service = cloud_RoleName,
+    ErrorRate,
+    FailedRequests,
+    TotalRequests,
+    Description = strcat("Error rate ", ErrorRate, "% exceeds threshold of 5%"),
+    Timestamp = now(),
+    WindowMinutes = 15
+
+// Response Time Degradation Alert
+let BaselinePeriod = requests
+| where timestamp between (ago(1h) .. ago(45m))
+| summarize BaselineAvg = avg(duration) by cloud_RoleName;
+let CurrentPeriod = requests
+| where timestamp > ago(15m)
+| summarize 
+    CurrentAvg = avg(duration),
+    RequestCount = count()
+by cloud_RoleName;
+CurrentPeriod
+| join kind=inner (BaselinePeriod) on cloud_RoleName
+| where RequestCount >= 10  // Minimum volume
+| extend DegradationPercent = round(((CurrentAvg - BaselineAvg) / BaselineAvg) * 100, 1)
+| where DegradationPercent > 100  // 100% slower than baseline
+| project 
+    AlertId = strcat("PERF-", cloud_RoleName, "-", bin(now(), 15m)),
+    AlertType = "Performance Degradation",
+    Severity = case(DegradationPercent > 300, "Critical", DegradationPercent > 200, "High", "Medium"),
+    Service = cloud_RoleName,
+    CurrentAvgMs = round(CurrentAvg, 0),
+    BaselineAvgMs = round(BaselineAvg, 0),
+    DegradationPercent,
+    Description = strcat("Response time increased by ", DegradationPercent, "%"),
+    Timestamp = now()
+
+// -----------------------------------------------------------------------------
+// Dependency Failure Alerts
+// -----------------------------------------------------------------------------
+
+// Dependency Failure Rate Alert
+dependencies
+| where timestamp > ago(15m)
+| summarize 
+    TotalCalls = count(),
+    FailedCalls = countif(success == false)
+by type, target, cloud_RoleName
+| where TotalCalls >= 5  // Minimum call volume
+| extend FailureRate = round((FailedCalls * 100.0) / TotalCalls, 2)
+| where FailureRate > 10  // >10% failure rate
+| project 
+    AlertId = strcat("DEP-", hash(strcat(type, target)), "-", bin(now(), 15m)),
+    AlertType = "Dependency Failure",
+    Severity = case(FailureRate > 50, "Critical", FailureRate > 25, "High", "Medium"),
+    Service = cloud_RoleName,
+    DependencyType = type,
+    Target = target,
+    FailureRate,
+    FailedCalls,
+    TotalCalls,
+    Description = strcat("Dependency ", type, " to ", target, " failing at ", FailureRate, "%"),
+    Timestamp = now()
+
+// New Dependency Failures (not seen in last hour)
+let RecentFailures = dependencies
+| where timestamp > ago(15m) and success == false
+| distinct type, target, resultCode;
+let HistoricalFailures = dependencies
+| where timestamp between (ago(1h) .. ago(15m)) and success == false
+| distinct type, target, resultCode;
+RecentFailures
+| join kind=leftanti (HistoricalFailures) on type, target, resultCode
+| project 
+    AlertId = strcat("NEWDEP-", hash(strcat(type, target, resultCode)), "-", bin(now(), 15m)),
+    AlertType = "New Dependency Failure",
+    Severity = "High",
+    DependencyType = type,
+    Target = target,
+    ResultCode = resultCode,
+    Description = strcat("New failure pattern detected: ", type, " -> ", target, " (", resultCode, ")"),
+    Timestamp = now()
+
+// -----------------------------------------------------------------------------
+// Exception Spike Alerts
+// -----------------------------------------------------------------------------
+
+// Exception Spike Detection
+let BaselineExceptions = exceptions
+| where timestamp between (ago(1h) .. ago(15m))
+| summarize BaselineCount = count() by cloud_RoleName, type;
+let CurrentExceptions = exceptions
+| where timestamp > ago(15m)
+| summarize CurrentCount = count() by cloud_RoleName, type;
+CurrentExceptions
+| join kind=inner (BaselineExceptions) on cloud_RoleName, type
+| extend SpikeMultiplier = round(toreal(CurrentCount) / toreal(BaselineCount), 1)
+| where CurrentCount >= 5 and SpikeMultiplier >= 3  // At least 3x increase
+| project 
+    AlertId = strcat("EXC-", cloud_RoleName, "-", hash(type), "-", bin(now(), 15m)),
+    AlertType = "Exception Spike",
+    Severity = case(SpikeMultiplier >= 10, "Critical", SpikeMultiplier >= 5, "High", "Medium"),
+    Service = cloud_RoleName,
+    ExceptionType = type,
+    CurrentCount,
+    BaselineCount,
+    SpikeMultiplier,
+    Description = strcat("Exception spike: ", CurrentCount, " vs baseline ", BaselineCount, " (", SpikeMultiplier, "x)"),
+    Timestamp = now()
+
+// Critical Exception Alert (specific high-severity exceptions)
+exceptions
+| where timestamp > ago(15m)
+| where type contains_any ("OutOfMemoryException", "StackOverflowException", "AccessViolationException", "SqlException")
+| summarize 
+    ExceptionCount = count(),
+    SampleMessage = any(outerMessage),
+    AffectedOperations = dcount(operation_Name)
+by cloud_RoleName, type
+| project 
+    AlertId = strcat("CRITEXC-", cloud_RoleName, "-", hash(type), "-", bin(now(), 15m)),
+    AlertType = "Critical Exception",
+    Severity = "Critical",
+    Service = cloud_RoleName,
+    ExceptionType = type,
+    ExceptionCount,
+    AffectedOperations,
+    SampleMessage,
+    Description = strcat("Critical exception detected: ", type, " (", ExceptionCount, " occurrences)"),
+    Timestamp = now()
+
+// -----------------------------------------------------------------------------
+// Infrastructure Alerts
+// -----------------------------------------------------------------------------
+
+// High CPU Usage Alert
+performanceCounters
+| where TimeGenerated > ago(15m)
+| where CounterName == "% Processor Time" and InstanceName == "_Total"
+| summarize AvgCPU = avg(CounterValue) by Computer
+| where AvgCPU > 90  // >90% CPU usage
+| project 
+    AlertId = strcat("CPU-", Computer, "-", bin(now(), 15m)),
+    AlertType = "High CPU Usage",
+    Severity = case(AvgCPU > 95, "Critical", "High"),
+    Computer,
+    CPUPercent = round(AvgCPU, 1),
+    Description = strcat("CPU usage at ", round(AvgCPU, 1), "% on ", Computer),
+    Timestamp = now()
+
+// Low Memory Alert
+performanceCounters
+| where TimeGenerated > ago(15m)
+| where CounterName == "Available MBytes"
+| summarize AvailableMemory = avg(CounterValue) by Computer
+| where AvailableMemory < 512  // Less than 512MB available
+| project 
+    AlertId = strcat("MEM-", Computer, "-", bin(now(), 15m)),
+    AlertType = "Low Memory",
+    Severity = case(AvailableMemory < 256, "Critical", "High"),
+    Computer,
+    AvailableMemoryMB = round(AvailableMemory, 0),
+    Description = strcat("Only ", round(AvailableMemory, 0), "MB memory available on ", Computer),
+    Timestamp = now()
+
+// Disk Space Alert
+performanceCounters
+| where TimeGenerated > ago(15m)
+| where CounterName == "% Free Space"
+| summarize FreeSpacePercent = avg(CounterValue) by Computer, InstanceName
+| where FreeSpacePercent < 15  // Less than 15% free space
+| project 
+    AlertId = strcat("DISK-", Computer, "-", InstanceName, "-", bin(now(), 15m)),
+    AlertType = "Low Disk Space",
+    Severity = case(FreeSpacePercent < 5, "Critical", FreeSpacePercent < 10, "High", "Medium"),
+    Computer,
+    Drive = InstanceName,
+    FreeSpacePercent = round(FreeSpacePercent, 1),
+    Description = strcat("Drive ", InstanceName, " on ", Computer, " has ", round(FreeSpacePercent, 1), "% free space"),
+    Timestamp = now()
+
+// -----------------------------------------------------------------------------
+// Service Availability Alerts
+// -----------------------------------------------------------------------------
+
+// Service Downtime Alert (no requests in last 10 minutes)
+let ActiveServices = requests
+| where timestamp between (ago(30m) .. ago(10m))
+| distinct cloud_RoleName;
+let CurrentlyActive = requests
+| where timestamp > ago(10m)
+| distinct cloud_RoleName;
+ActiveServices
+| join kind=leftanti (CurrentlyActive) on cloud_RoleName
+| project 
+    AlertId = strcat("DOWN-", cloud_RoleName, "-", bin(now(), 10m)),
+    AlertType = "Service Downtime",
+    Severity = "Critical",
+    Service = cloud_RoleName,
+    Description = strcat("No requests received from ", cloud_RoleName, " in last 10 minutes"),
+    LastSeenMinutesAgo = 10,
+    Timestamp = now()
+
+// SLA Breach Alert (availability < 99.9% in last hour)
+requests
+| where timestamp > ago(1h)
+| summarize 
+    TotalRequests = count(),
+    SuccessfulRequests = countif(success == true)
+by cloud_RoleName
+| where TotalRequests >= 100  // Minimum volume for SLA calculation
+| extend AvailabilityPercent = round((SuccessfulRequests * 100.0) / TotalRequests, 3)
+| where AvailabilityPercent < 99.9
+| project 
+    AlertId = strcat("SLA-", cloud_RoleName, "-", bin(now(), 1h)),
+    AlertType = "SLA Breach",
+    Severity = "High",
+    Service = cloud_RoleName,
+    AvailabilityPercent,
+    SLATarget = 99.9,
+    TotalRequests,
+    FailedRequests = TotalRequests - SuccessfulRequests,
+    Description = strcat("SLA breach: ", AvailabilityPercent, "% availability (target: 99.9%)"),
+    Timestamp = now()
+
+// -----------------------------------------------------------------------------
+// Custom Business Logic Alerts
+// -----------------------------------------------------------------------------
+
+// Transaction Volume Drop Alert
+let BaselineVolume = requests
+| where timestamp between (ago(2h) .. ago(1h))
+| where url contains "/api/transaction" or operation_Name contains "transaction"
+| summarize BaselineCount = count();
+let CurrentVolume = requests
+| where timestamp > ago(1h)
+| where url contains "/api/transaction" or operation_Name contains "transaction"
+| summarize CurrentCount = count();
+CurrentVolume
+| extend BaselineCount = toscalar(BaselineVolume)
+| extend VolumeDropPercent = round(((BaselineCount - CurrentCount) * 100.0) / BaselineCount, 1)
+| where VolumeDropPercent > 50  // 50% drop in transaction volume
+| project 
+    AlertId = strcat("TXVOL-", bin(now(), 1h)),
+    AlertType = "Transaction Volume Drop",
+    Severity = case(VolumeDropPercent > 80, "Critical", "High"),
+    CurrentTransactions = CurrentCount,
+    BaselineTransactions = BaselineCount,
+    VolumeDropPercent,
+    Description = strcat("Transaction volume dropped by ", VolumeDropPercent, "%"),
+    Timestamp = now()
+
+// -----------------------------------------------------------------------------
+// Alert Aggregation and Deduplication
+// -----------------------------------------------------------------------------
+
+// Consolidated Alert Summary (last 15 minutes)
+union 
+(
+    // Error rate alerts
+    requests
+    | where timestamp > ago(15m)
+    | summarize TotalRequests = count(), FailedRequests = countif(success == false) by cloud_RoleName
+    | where TotalRequests >= 20
+    | extend ErrorRate = round((FailedRequests * 100.0) / TotalRequests, 2)
+    | where ErrorRate > 5.0
+    | project AlertType = "High Error Rate", Component = cloud_RoleName, Value = ErrorRate, Threshold = 5.0
+),
+(
+    // Exception spikes
+    exceptions
+    | where timestamp > ago(15m)
+    | summarize ExceptionCount = count() by cloud_RoleName
+    | where ExceptionCount > 20
+    | project AlertType = "Exception Spike", Component = cloud_RoleName, Value = toreal(ExceptionCount), Threshold = 20.0
+),
+(
+    // High CPU usage
+    performanceCounters
+    | where TimeGenerated > ago(15m)
+    | where CounterName == "% Processor Time" and InstanceName == "_Total"
+    | summarize AvgCPU = avg(CounterValue) by Computer
+    | where AvgCPU > 90
+    | project AlertType = "High CPU Usage", Component = Computer, Value = AvgCPU, Threshold = 90.0
+)
+| extend 
+    Severity = case(
+        Value > (Threshold * 2), "Critical",
+        Value > (Threshold * 1.5), "High",
+        "Medium"
+    ),
+    Timestamp = now()
+| summarize 
+    AlertCount = count(),
+    MaxSeverity = max(Severity),
+    Components = make_set(Component),
+    MaxValue = max(Value)
+by AlertType, Threshold
+| extend 
+    SeverityOrder = case(MaxSeverity == "Critical", 1, MaxSeverity == "High", 2, 3),
+    Summary = strcat(AlertCount, " ", AlertType, " alert(s) - Max: ", round(MaxValue, 1))
+| sort by SeverityOrder asc, AlertCount desc
+| project AlertType, AlertCount, MaxSeverity, Components, Summary, Timestamp = now()

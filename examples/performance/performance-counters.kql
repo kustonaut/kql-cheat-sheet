@@ -1,0 +1,175 @@
+// Performance Counters Analysis for Real Time Intelligence
+// Purpose: Monitor system performance metrics (CPU, Memory, Disk, Network)
+// Data Source: performanceCounters table
+// Use Case: Infrastructure monitoring, capacity planning, performance troubleshooting
+
+// -----------------------------------------------------------------------------
+// CPU Utilization Monitoring
+// -----------------------------------------------------------------------------
+
+// Average CPU utilization by computer over time
+performanceCounters
+| where TimeGenerated > ago(24h)
+| where CounterName == "% Processor Time" and InstanceName == "_Total"
+| summarize AvgCPU = avg(CounterValue) by bin(TimeGenerated, 1h), Computer
+| render timechart 
+    with (title="CPU Utilization Over Time", xtitle="Time", ytitle="CPU %")
+
+// Identify computers with high CPU usage
+performanceCounters
+| where TimeGenerated > ago(1h)
+| where CounterName == "% Processor Time" and InstanceName == "_Total"
+| summarize 
+    AvgCPU = round(avg(CounterValue), 2),
+    MaxCPU = round(max(CounterValue), 2),
+    P95CPU = round(percentile(CounterValue, 95), 2)
+by Computer
+| where AvgCPU > 80 or MaxCPU > 95
+| sort by AvgCPU desc
+
+// -----------------------------------------------------------------------------
+// Memory Usage Analysis
+// -----------------------------------------------------------------------------
+
+// Memory utilization trends
+performanceCounters
+| where TimeGenerated > ago(24h)
+| where CounterName in ("Available MBytes", "% Committed Bytes In Use")
+| summarize AvgValue = avg(CounterValue) by bin(TimeGenerated, 1h), Computer, CounterName
+| render timechart 
+    with (title="Memory Usage Trends", xtitle="Time", ytitle="Value")
+
+// Low memory alerts
+performanceCounters
+| where TimeGenerated > ago(1h)
+| where CounterName == "Available MBytes"
+| summarize AvailableMemoryMB = avg(CounterValue) by Computer
+| where AvailableMemoryMB < 500  // Less than 500MB available
+| project Computer, AvailableMemoryMB, Status = "Low Memory Alert"
+| sort by AvailableMemoryMB asc
+
+// -----------------------------------------------------------------------------
+// Disk Performance Monitoring
+// -----------------------------------------------------------------------------
+
+// Disk I/O performance
+performanceCounters
+| where TimeGenerated > ago(6h)
+| where CounterName in ("Disk Reads/sec", "Disk Writes/sec", "Avg. Disk sec/Read", "Avg. Disk sec/Write")
+| where InstanceName != "_Total"  // Exclude total, focus on individual disks
+| summarize AvgValue = avg(CounterValue) by bin(TimeGenerated, 15m), Computer, InstanceName, CounterName
+| render timechart 
+    with (title="Disk I/O Performance", xtitle="Time", ytitle="Operations/sec or Latency")
+
+// Disk space monitoring
+performanceCounters
+| where TimeGenerated > ago(1h)
+| where CounterName == "% Free Space"
+| summarize FreeSpacePercent = avg(CounterValue) by Computer, InstanceName
+| where FreeSpacePercent < 20  // Less than 20% free space
+| project Computer, Drive = InstanceName, FreeSpacePercent, Status = "Low Disk Space"
+| sort by FreeSpacePercent asc
+
+// -----------------------------------------------------------------------------
+// Network Performance Analysis
+// -----------------------------------------------------------------------------
+
+// Network utilization monitoring
+performanceCounters
+| where TimeGenerated > ago(6h)
+| where CounterName in ("Bytes Received/sec", "Bytes Sent/sec")
+| summarize 
+    NetworkIn = sum(iff(CounterName == "Bytes Received/sec", CounterValue, 0)),
+    NetworkOut = sum(iff(CounterName == "Bytes Sent/sec", CounterValue, 0))
+by bin(TimeGenerated, 15m), Computer
+| extend 
+    NetworkInMBps = round(NetworkIn / 1024 / 1024, 2),
+    NetworkOutMBps = round(NetworkOut / 1024 / 1024, 2)
+| project TimeGenerated, Computer, NetworkInMBps, NetworkOutMBps
+| render timechart 
+    with (title="Network Utilization (MB/s)", xtitle="Time", ytitle="MB/s")
+
+// -----------------------------------------------------------------------------
+// Comprehensive System Health Dashboard
+// -----------------------------------------------------------------------------
+
+// System health summary (last 1 hour)
+let HealthSummary = performanceCounters
+| where TimeGenerated > ago(1h)
+| where CounterName in (
+    "% Processor Time",      // CPU
+    "Available MBytes",      // Memory
+    "% Free Space",          // Disk
+    "Bytes Total/sec"        // Network
+)
+| where InstanceName in ("_Total", "C:")  // Focus on key instances
+| summarize AvgValue = avg(CounterValue) by Computer, CounterName
+| evaluate pivot(CounterName, AvgValue);
+HealthSummary
+| extend 
+    CPUStatus = case(
+        ['% Processor Time'] > 90, "Critical",
+        ['% Processor Time'] > 70, "Warning", 
+        "Healthy"
+    ),
+    MemoryStatus = case(
+        ['Available MBytes'] < 512, "Critical",
+        ['Available MBytes'] < 1024, "Warning",
+        "Healthy"
+    ),
+    DiskStatus = case(
+        ['% Free Space'] < 10, "Critical",
+        ['% Free Space'] < 20, "Warning",
+        "Healthy"
+    )
+| project 
+    Computer,
+    CPU_Percent = round(['% Processor Time'], 1),
+    CPUStatus,
+    Memory_MB = round(['Available MBytes'], 0),
+    MemoryStatus,
+    DiskFree_Percent = round(['% Free Space'], 1),
+    DiskStatus
+| sort by Computer asc
+
+// -----------------------------------------------------------------------------
+// Performance Baseline Comparison
+// -----------------------------------------------------------------------------
+
+// Compare current performance with last week's baseline
+let CurrentPeriod = performanceCounters
+| where TimeGenerated > ago(1h)
+| where CounterName == "% Processor Time" and InstanceName == "_Total"
+| summarize CurrentCPU = avg(CounterValue) by Computer;
+let BaselinePeriod = performanceCounters
+| where TimeGenerated between (ago(8d) .. ago(7d))  // Same hour last week
+| where CounterName == "% Processor Time" and InstanceName == "_Total"
+| summarize BaselineCPU = avg(CounterValue) by Computer;
+CurrentPeriod
+| join kind=inner (BaselinePeriod) on Computer
+| extend 
+    CPUDifference = round(CurrentCPU - BaselineCPU, 2),
+    PercentChange = round(((CurrentCPU - BaselineCPU) / BaselineCPU) * 100, 1)
+| project Computer, CurrentCPU, BaselineCPU, CPUDifference, PercentChange
+| where abs(PercentChange) > 20  // Significant change from baseline
+| sort by PercentChange desc
+
+// -----------------------------------------------------------------------------
+// Resource Correlation Analysis
+// -----------------------------------------------------------------------------
+
+// Correlate high CPU with memory and disk usage
+performanceCounters
+| where TimeGenerated > ago(6h)
+| where CounterName in ("% Processor Time", "Available MBytes", "Avg. Disk sec/Read")
+| where InstanceName in ("_Total", "C:")
+| summarize AvgValue = avg(CounterValue) by bin(TimeGenerated, 30m), Computer, CounterName
+| evaluate pivot(CounterName, AvgValue)
+| where ['% Processor Time'] > 80  // High CPU periods
+| project 
+    TimeGenerated, 
+    Computer,
+    HighCPU = ['% Processor Time'],
+    AvailableMemory = ['Available MBytes'],
+    DiskLatency = ['Avg. Disk sec/Read']
+| sort by TimeGenerated desc
