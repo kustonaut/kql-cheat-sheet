@@ -1,0 +1,6 @@
+<svg width="200" height="100" xmlns="http://www.w3.org/2000/svg">
+  <rect width="200" height="100" fill="#0078d4" rx="10"/>
+  <text x="100" y="40" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="24" font-weight="bold">KQL</text>
+  <text x="100" y="65" text-anchor="middle" fill="#87ceeb" font-family="Arial, sans-serif" font-size="12">Kusto Query Language</text>
+  <text x="100" y="80" text-anchor="middle" fill="#87ceeb" font-family="Arial, sans-serif" font-size="10">Real Time Intelligence</text>
+</svg>

@@ -15,6 +15,12 @@ A comprehensive, community-driven reference for Kusto Query Language (KQL) speci
 
 ## 📋 What's Included
 
+### 🎨 Visual Learning Features
+- **📊 Interactive Diagrams** - Mermaid flowcharts and mind maps
+- **🖼️ Visual Examples** - SVG illustrations of query patterns
+- **📈 Performance Comparisons** - Side-by-side optimization examples
+- **🎯 Query Flow Diagrams** - Visual representation of KQL operations
+
 ### Core Reference
 - **Basic Syntax** - Table selection, filtering, projections
 - **Data Types** - String, numeric, and datetime operations

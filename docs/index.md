@@ -11,6 +11,7 @@ Welcome to the comprehensive KQL (Kusto Query Language) cheat sheet designed spe
 ## Quick Navigation
 
 - [📖 **Complete Cheat Sheet**](../KQL-Cheat-Sheet.md) - Full reference with all operators and functions
+- [🎨 **Visual Examples**](visual-examples.md) - Interactive diagrams and visual guides
 - [💡 **Examples**](../examples/) - Practical KQL examples for common scenarios
 - [🚀 **Performance Tips**](../KQL-Cheat-Sheet.md#performance-tips) - Optimize your queries for better performance
 - [⚡ **Real-time Patterns**](../KQL-Cheat-Sheet.md#real-time-intelligence-specific) - Specific patterns for RTI

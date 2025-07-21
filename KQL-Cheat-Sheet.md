@@ -1,6 +1,39 @@
 # KQL Cheat Sheet for Real Time Intelligence
 
+![KQL Logo](assets/images/kql-logo.svg)
+
 A comprehensive reference for Kusto Query Language (KQL) specifically tailored for Real Time Intelligence scenarios.
+
+## 🎯 KQL Query Flow
+
+```mermaid
+graph TD
+    A[📊 Data Source] --> B[🔍 Filter]
+    B --> C[🔄 Transform]
+    C --> D[📈 Aggregate]
+    D --> E[📋 Present]
+    
+    B1[where] --> B
+    B2[take] --> B
+    
+    C1[project] --> C
+    C2[extend] --> C
+    C3[parse] --> C
+    
+    D1[summarize] --> D
+    D2[count] --> D
+    D3[distinct] --> D
+    
+    E1[sort] --> E
+    E2[top] --> E
+    E3[render] --> E
+    
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#e8f5e8
+    style D fill:#fff3e0
+    style E fill:#fce4ec
+```
 
 ## Table of Contents
 - [Basic Syntax](#basic-syntax)
@@ -49,6 +82,27 @@ TableName
 ```
 
 ## Data Types
+
+```mermaid
+mindmap
+  root((KQL Data Types))
+    String
+      string
+      dynamic
+    Numeric
+      int
+      long
+      real
+      decimal
+    DateTime
+      datetime
+      timespan
+    Boolean
+      bool
+    Special
+      guid
+      dynamic
+```
 
 ### String Operations
 ```kql
@@ -194,6 +248,24 @@ by EventLevel
 
 ## Joins
 
+```mermaid
+graph LR
+    A[Table A] --> C{Join Type}
+    B[Table B] --> C
+    
+    C -->|inner| D[Inner Join<br/>Only matching records]
+    C -->|leftouter| E[Left Join<br/>All from A + matches from B]
+    C -->|rightouter| F[Right Join<br/>All from B + matches from A]
+    C -->|fullouter| G[Full Join<br/>All records from both]
+    
+    style A fill:#e3f2fd
+    style B fill:#e8f5e8
+    style D fill:#fff3e0
+    style E fill:#f3e5f5
+    style F fill:#e0f2f1
+    style G fill:#fce4ec
+```
+
 ### Inner Join
 ```kql
 Table1
@@ -264,6 +336,33 @@ Events
 
 ## Performance Tips
 
+![Query Performance Comparison](assets/images/query-performance.svg)
+
+```mermaid
+graph TD
+    A[🚀 Query Optimization] --> B[🔍 Filter Early]
+    A --> C[📊 Project Only Needed Columns]
+    A --> D[⏰ Use Time Ranges]
+    A --> E[📈 Aggregate Before Join]
+    
+    B --> B1[where timestamp > ago(1h)]
+    C --> C1[project col1, col2, col3]
+    D --> D1[datetime range filters]
+    E --> E1[summarize before join]
+    
+    F[❌ Performance Killers] --> G[🔄 Full Table Scans]
+    F --> H[🔗 Large Joins]
+    F --> I[📝 Complex Regex]
+    F --> J[🌊 No Time Filters]
+    
+    style A fill:#e8f5e8
+    style F fill:#ffebee
+    style B1 fill:#e3f2fd
+    style C1 fill:#e3f2fd
+    style D1 fill:#e3f2fd
+    style E1 fill:#e3f2fd
+```
+
 ### Filtering Early
 ```kql
 // Good: Filter first
@@ -296,6 +395,32 @@ TableName
 ```
 
 ## Real Time Intelligence Specific
+
+```mermaid
+graph TB
+    subgraph "Real Time Intelligence Architecture"
+        A[📱 Applications] --> B[📊 Telemetry]
+        C[🖥️ Infrastructure] --> B
+        D[👥 Users] --> B
+        
+        B --> E[📈 Real Time Analytics]
+        E --> F[🚨 Alerts]
+        E --> G[📋 Dashboards]
+        E --> H[🔍 Queries]
+        
+        F --> I[📧 Notifications]
+        G --> J[📊 Visualizations]
+        H --> K[🧠 Insights]
+    end
+    
+    style A fill:#e3f2fd
+    style C fill:#e8f5e8
+    style D fill:#fff3e0
+    style E fill:#f3e5f5
+    style F fill:#ffebee
+    style G fill:#e0f2f1
+    style H fill:#fce4ec
+```
 
 ### Telemetry Analysis
 ```kql
@@ -388,6 +513,40 @@ heartbeat
 | summarize LastHeartbeat = max(TimeGenerated) by Computer
 | extend Status = iff(LastHeartbeat < ago(2m), "Down", "Up")
 | where Status == "Down"
+```
+
+## 📊 Time Series Analysis Pattern
+
+```mermaid
+graph LR
+    A[📅 Time Data] --> B[🔄 bin()]
+    B --> C[📊 summarize]
+    C --> D[📈 render timechart]
+    
+    A1[timestamp] --> B
+    B1[bin(timestamp, 15m)] --> C
+    C1[count(), avg(), etc.] --> D
+    D1[Line Chart] --> E[🎯 Insights]
+    
+    style A fill:#e3f2fd
+    style B fill:#e8f5e8
+    style C fill:#fff3e0
+    style D fill:#f3e5f5
+    style E fill:#fce4ec
+```
+
+### Time Series Example
+```kql
+// Application performance over time
+requests
+| where timestamp > ago(24h)
+| bin timestamp to 1h
+| summarize 
+    RequestCount = count(),
+    AvgDuration = avg(duration),
+    P95Duration = percentile(duration, 95),
+    ErrorRate = countif(success == false) * 100.0 / count()
+| render timechart with (title="Application Performance Dashboard")
 ```
 
 ### Alerting Queries
