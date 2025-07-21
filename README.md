@@ -69,25 +69,6 @@ A comprehensive, community-driven reference for Kusto Query Language (KQL) speci
     └── copilot-instructions.md # Copilot customization
 ```
 
-## 🌐 Making It Public
-
-This cheat sheet is designed to be easily shareable:
-
-### Option 1: GitHub Pages (Recommended)
-1. **Fork this repository** to your GitHub account
-2. **Enable GitHub Pages** in repository settings
-3. **Share the URL**: `https://your-username.github.io/repository-name`
-
-### Option 2: Direct Sharing
-- **Share the raw file**: Direct link to `KQL-Cheat-Sheet.md`
-- **Download and distribute**: PDF or markdown versions
-- **Embed in documentation**: Copy sections to internal wikis
-
-### Option 3: Corporate Distribution
-- **Internal wikis** - Copy content to Confluence, SharePoint, etc.
-- **Team documentation** - Include in onboarding materials
-- **Training materials** - Use for workshops and training sessions
-
 ## 📚 Usage Examples
 
 ### Quick Reference
