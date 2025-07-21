@@ -2,12 +2,16 @@
 
 A comprehensive, community-driven reference for Kusto Query Language (KQL) specifically tailored for Real Time Intelligence scenarios. This repository provides practical examples, best practices, and quick references for working with telemetry data, application insights, and real-time analytics.
 
+> **Originally compiled by**: Akshay Dixit (kustonaut)  
+> **Source**: http://aka.ms/kustonautKQLcheatsheet  
+> **Enhanced for**: Real Time Intelligence scenarios and community collaboration
+
 ## 🚀 Quick Start
 
 - **[📖 View the Cheat Sheet](KQL-Cheat-Sheet.md)** - Complete reference guide
-- **[🌐 Interactive Web Version](https://your-username.github.io/kql-cheat-sheet)** - Browse online
+- **[📱 Download PDF](Kustonaut's%20KQL%20Cheatsheet.pdf)** - Offline reference
+- **[🌐 Interactive Web Version](https://kustonaut.github.io/kql-cheat-sheet)** - Browse online
 - **[💡 Browse Examples](examples/)** - Practical query examples
-- **[⬇️ Download PDF](releases/)** - Offline reference (coming soon)
 
 ## 📋 What's Included
 
