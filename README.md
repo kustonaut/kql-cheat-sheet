@@ -55,7 +55,7 @@ The synergy of **KQL + RTI + Eventhouse** creates a powerful ecosystem for:
 ## 🚀 Quick Start
 
 - **[📖 View the Cheat Sheet](KQL-Cheat-Sheet.md)** - Complete reference guide
-- **[� Download PDF Version](KQL-Cheat-Sheet.pdf)** - Professional PDF format
+- **[📄 Download PDF Version](KQL-Cheat-Sheet.pdf)** - Professional PDF format
 - **[📱 Legacy PDF](Kustonaut's%20KQL%20Cheatsheet.pdf)** - Original PDF reference
 - **[🌐 Interactive Web Version](https://kustonaut.github.io/kql-cheat-sheet)** - Browse online
 - **[💡 Browse Examples](examples/)** - Practical query examples
