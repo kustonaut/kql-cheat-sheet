@@ -1,0 +1,49 @@
+theme: minima
+title: KQL Cheat Sheet for Real Time Intelligence
+description: A comprehensive reference for Kusto Query Language specifically tailored for Real Time Intelligence scenarios
+url: "https://kustonaut.github.io"
+baseurl: "/kql-cheat-sheet"
+
+markdown: kramdown
+highlighter: rouge
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+  - jekyll-seo-tag
+
+# Include files in the root directory
+include:
+  - KQL-Cheat-Sheet.md
+  - KQL-Cheat-Sheet.pdf
+  - examples
+  - assets
+
+# Exclude files
+exclude:
+  - .git
+  - .github
+  - node_modules
+  - vendor
+  - Gemfile.lock
+  - .mdtopdf.json
+  - check-deployment.sh
+  - check-deployment.ps1
+  - DEPLOYMENT.md
+  - LICENSE
+
+# Navigation
+header_pages:
+  - KQL-Cheat-Sheet.md
+  - examples/README.md
+
+# Code highlighting
+kramdown:
+  syntax_highlighter: rouge
+  syntax_highlighter_opts:
+    css_class: 'highlight'
+    
+# Collections
+collections:
+  examples:
+    output: true
+    permalink: /:collection/:name/

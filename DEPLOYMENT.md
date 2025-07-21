@@ -4,23 +4,36 @@ This repository is configured for automatic deployment to GitHub Pages using Git
 
 ## 🚀 Deployment Setup
 
-### Automatic Deployment (Recommended)
-The repository includes a GitHub Actions workflow (`.github/workflows/deploy-pages.yml`) that automatically deploys to GitHub Pages when changes are pushed to the `main` branch.
+### ⚠️ IMPORTANT: Manual Setup Required First
+**GitHub Pages must be manually enabled before the workflow can deploy successfully.**
 
-### Manual Setup Required
-To enable GitHub Pages for this repository, follow these steps:
-
+### Step 1: Enable GitHub Pages
 1. **Go to Repository Settings**
-   - Navigate to https://github.com/kustonaut/kql-cheat-sheet/settings
-   - Scroll down to the "Pages" section
+   - Navigate to [https://github.com/kustonaut/kql-cheat-sheet/settings/pages](https://github.com/kustonaut/kql-cheat-sheet/settings/pages)
+   - You must have admin access to the repository
 
 2. **Configure Source**
-   - Source: "GitHub Actions"
-   - This will use our custom workflow instead of the default Jekyll build
+   - **Source**: Select "GitHub Actions" (NOT "Deploy from a branch")
+   - This tells GitHub to use our custom workflow instead of default Jekyll
+   - Click "Save"
 
-3. **Custom Domain (Optional)**
-   - If you want to use a custom domain, add it in the "Custom domain" field
-   - Example: `kql.kustonaut.com`
+3. **Verify Setup**
+   - You should see "Your site is ready to be published at https://kustonaut.github.io/kql-cheat-sheet/"
+   - Initial deployment may take 5-10 minutes
+
+### Step 2: Monitor First Deployment
+1. **Check Actions Tab**: [https://github.com/kustonaut/kql-cheat-sheet/actions](https://github.com/kustonaut/kql-cheat-sheet/actions)
+2. **Look for "Deploy to GitHub Pages" workflow**
+3. **Wait for green checkmark** indicating successful deployment
+
+### Step 3: Test the Site
+After successful deployment, run our status checker:
+```powershell
+.\check-deployment.ps1
+```
+
+### Automatic Deployment (After Initial Setup)
+Once GitHub Pages is enabled, the repository includes a GitHub Actions workflow that automatically deploys when changes are pushed to the `main` branch.
 
 ### Expected URLs
 After deployment, the site will be available at:
