@@ -4,17 +4,42 @@ title: KQL Cheat Sheet for Real Time Intelligence
 description: A comprehensive reference for Kusto Query Language specifically tailored for Real Time Intelligence scenarios
 ---
 
-# KQL Cheat Sheet for Real Time Intelligence
+# 🚀 KQL Cheat Sheet for Real Time Intelligence
 
-Welcome to the comprehensive KQL (Kusto Query Language) cheat sheet designed specifically for Real Time Intelligence scenarios. This resource provides practical examples, best practices, and quick references for working with telemetry data, application insights, and real-time analytics.
+Welcome to the most comprehensive KQL (Kusto Query Language) cheat sheet designed specifically for **Microsoft Fabric Real Time Intelligence** scenarios. This resource provides practical examples, best practices, and quick references for working with telemetry data, application insights, and real-time analytics.
+
+> **Originally compiled by**: Akshay Dixit (kustonaut)  
+> **Enhanced for**: Real Time Intelligence scenarios and community collaboration
+
+## 🎯 What You'll Find Here
+
+### 📚 **Complete Reference Materials**
+- **150+ KQL operators** with practical examples
+- **Visual diagrams** using Mermaid flowcharts
+- **Performance optimization** tips and tricks
+- **Real-time patterns** specific to RTI scenarios
+
+### 🎨 **Enhanced Learning Experience**
+- **Interactive diagrams** for query flow visualization
+- **Graph operators** for network analysis
+- **Time-series patterns** for telemetry analysis
+- **Security queries** for threat hunting
+
+### 💡 **Practical Examples**
+- **Business analytics** - User behavior and revenue analysis
+- **Performance monitoring** - Request analysis and dependency tracking
+- **Security compliance** - Audit logs and threat detection
+- **Infrastructure monitoring** - Health checks and alerting
 
 ## Quick Navigation
 
 - [📖 **Complete Cheat Sheet**](../KQL-Cheat-Sheet.md) - Full reference with all operators and functions
+- [📄 **Download PDF**](../KQL-Cheat-Sheet.pdf) - Professional PDF version for offline use
 - [🎨 **Visual Examples**](visual-examples.md) - Interactive diagrams and visual guides
 - [💡 **Examples**](../examples/) - Practical KQL examples for common scenarios
 - [🚀 **Performance Tips**](../KQL-Cheat-Sheet.md#performance-tips) - Optimize your queries for better performance
 - [⚡ **Real-time Patterns**](../KQL-Cheat-Sheet.md#real-time-intelligence-specific) - Specific patterns for RTI
+- [📊 **Graph Operators**](../KQL-Cheat-Sheet.md#graph-operators) - Network analysis and pattern matching
 
 ## Featured Examples
 

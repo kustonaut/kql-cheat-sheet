@@ -1,14 +1,15 @@
 theme: minima
 title: KQL Cheat Sheet for Real Time Intelligence
 description: A comprehensive reference for Kusto Query Language specifically tailored for Real Time Intelligence scenarios
-url: ""
-baseurl: ""
+url: "https://kustonaut.github.io"
+baseurl: "/kql-cheat-sheet"
 
 markdown: kramdown
 highlighter: rouge
 plugins:
   - jekyll-feed
   - jekyll-sitemap
+  - jekyll-seo-tag
 
 # Navigation
 header_pages:
