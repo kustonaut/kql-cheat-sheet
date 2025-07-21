@@ -1,0 +1,179 @@
+// Request Analysis Queries for Real Time Intelligence
+// Purpose: Analyze HTTP request patterns, performance, and failure rates
+
+// ============================================================================
+// Basic Request Analysis
+// ============================================================================
+
+// Request volume over time
+requests
+| where timestamp > ago(24h)
+| summarize RequestCount = count() by bin(timestamp, 1h)
+| render timechart 
+    with (title="Request Volume (Last 24 Hours)")
+
+// ============================================================================
+// Performance Analysis
+// ============================================================================
+
+// Response time percentiles
+requests
+| where timestamp > ago(6h)
+| summarize 
+    P50 = percentile(duration, 50),
+    P90 = percentile(duration, 90),
+    P95 = percentile(duration, 95),
+    P99 = percentile(duration, 99),
+    Average = avg(duration),
+    RequestCount = count()
+by bin(timestamp, 15m)
+| render timechart 
+    with (title="Response Time Percentiles")
+
+// Slowest operations
+requests
+| where timestamp > ago(1h)
+| where duration > 1000  // Requests slower than 1 second
+| project timestamp, name, duration, url, resultCode
+| sort by duration desc
+| take 20
+
+// ============================================================================
+// Error Analysis
+// ============================================================================
+
+// Error rate analysis
+requests
+| where timestamp > ago(6h)
+| summarize 
+    TotalRequests = count(),
+    FailedRequests = countif(success == false),
+    ErrorRate = round(100.0 * countif(success == false) / count(), 2)
+by bin(timestamp, 15m)
+| render timechart 
+    with (title="Error Rate Percentage")
+
+// Top error types
+requests
+| where timestamp > ago(24h)
+| where success == false
+| summarize Count = count(), Sample = any(url) by resultCode
+| sort by Count desc
+| take 10
+
+// Error patterns by operation
+requests
+| where timestamp > ago(6h)
+| where success == false
+| summarize 
+    ErrorCount = count(),
+    UniqueUsers = dcount(user_Id),
+    SampleError = any(url)
+by name
+| sort by ErrorCount desc
+
+// ============================================================================
+// Traffic Analysis
+// ============================================================================
+
+// Top operations by volume
+requests
+| where timestamp > ago(24h)
+| summarize 
+    RequestCount = count(),
+    AvgDuration = avg(duration),
+    SuccessRate = round(100.0 * countif(success == true) / count(), 2)
+by name
+| sort by RequestCount desc
+| take 15
+
+// Geographic distribution (if available)
+requests
+| where timestamp > ago(24h)
+| where isnotnull(client_CountryOrRegion)
+| summarize RequestCount = count() by client_CountryOrRegion
+| sort by RequestCount desc
+| take 10
+
+// User agent analysis
+requests
+| where timestamp > ago(24h)
+| extend UserAgent = tostring(customDimensions.["User-Agent"])
+| where isnotnull(UserAgent)
+| summarize Count = count() by UserAgent
+| sort by Count desc
+| take 10
+
+// ============================================================================
+// Performance Alerting Queries
+// ============================================================================
+
+// High error rate alert (>5% in last 15 minutes)
+requests
+| where timestamp > ago(15m)
+| summarize 
+    Total = count(),
+    Failures = countif(success == false)
+| extend ErrorRate = round(100.0 * Failures / Total, 2)
+| where ErrorRate > 5
+| project ErrorRate, Total, Failures, AlertTime = now()
+
+// Response time spike detection
+requests
+| where timestamp > ago(30m)
+| summarize AvgDuration = avg(duration) by bin(timestamp, 5m)
+| serialize
+| extend PrevAvg = prev(AvgDuration, 1)
+| where AvgDuration > PrevAvg * 1.5  // 50% increase
+| project timestamp, AvgDuration, PrevAvg, PercentIncrease = round((AvgDuration - PrevAvg) / PrevAvg * 100, 2)
+
+// Low traffic detection (potential issue)
+requests
+| where timestamp > ago(1h)
+| summarize RequestCount = count() by bin(timestamp, 5m)
+| where RequestCount < 10  // Adjust threshold as needed
+| project timestamp, RequestCount, AlertTime = now()
+
+// ============================================================================
+// Advanced Analysis
+// ============================================================================
+
+// Request funnel analysis
+requests
+| where timestamp > ago(24h)
+| where name in ("HomePage", "ProductPage", "CartPage", "CheckoutPage")
+| summarize Count = count() by name
+| project 
+    Operation = name,
+    Count,
+    ConversionRate = case(
+        name == "HomePage", 100.0,
+        name == "ProductPage", round(100.0 * Count / toscalar(requests | where timestamp > ago(24h) and name == "HomePage" | count), 2),
+        name == "CartPage", round(100.0 * Count / toscalar(requests | where timestamp > ago(24h) and name == "ProductPage" | count), 2),
+        name == "CheckoutPage", round(100.0 * Count / toscalar(requests | where timestamp > ago(24h) and name == "CartPage" | count), 2),
+        0.0
+    )
+
+// Session analysis
+requests
+| where timestamp > ago(6h)
+| where isnotnull(session_Id)
+| summarize 
+    RequestsPerSession = count(),
+    SessionDuration = max(timestamp) - min(timestamp),
+    Operations = make_set(name)
+by session_Id
+| summarize 
+    AvgRequestsPerSession = avg(RequestsPerSession),
+    AvgSessionDuration = avg(SessionDuration),
+    TotalSessions = count()
+
+// Performance comparison (current vs previous period)
+let current = requests | where timestamp > ago(1h);
+let previous = requests | where timestamp between (ago(2h) .. ago(1h));
+union 
+    (current | summarize AvgDuration = avg(duration), Period = "Current Hour"),
+    (previous | summarize AvgDuration = avg(duration), Period = "Previous Hour")
+| project Period, AvgDuration
+| evaluate pivot(Period, any(AvgDuration))
+| extend PerformanceChange = round((["Current Hour"] - ["Previous Hour"]) / ["Previous Hour"] * 100, 2)
