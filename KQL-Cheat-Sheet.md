@@ -43,6 +43,7 @@ graph TD
 - [Aggregations](#aggregations)
 - [Joins](#joins)
 - [Advanced Patterns](#advanced-patterns)
+- [Advanced Analytics & AI (2025 Features)](#advanced-analytics--ai-2025-features)
 - [Performance Tips](#performance-tips)
 - [Real Time Intelligence Specific](#real-time-intelligence-specific)
 - [Security & Threat Hunting](#security--threat-hunting)
@@ -345,6 +346,89 @@ Events
     EventLevel == "Information", "Low",
     "Unknown"
 )
+```
+
+## Advanced Analytics & AI (2025 Features)
+
+> 📚 **Documentation**: [KQL function library](https://learn.microsoft.com/azure/data-explorer/kusto/functions-library/functions-library) | [Azure Data Explorer ML plugins](https://learn.microsoft.com/azure/data-explorer/kusto/query/machine-learning-clustering) | [Real-Time Intelligence in Microsoft Fabric](https://learn.microsoft.com/fabric/real-time-intelligence/overview)
+
+### Vector Similarity Search
+
+Vector similarity search enables semantic and RAG (Retrieval-Augmented Generation) scenarios by comparing embedding vectors stored in KQL tables.
+
+```kql
+// Compute cosine similarity between a query vector and stored embeddings
+// series_cosine_similarity_fl() is a user-defined function from the KQL function library
+let query_vector = dynamic([0.12, 0.85, 0.33, 0.76]);  // Example embedding
+DocumentEmbeddings
+| extend similarity = series_cosine_similarity_fl(Embedding, query_vector)
+| where similarity > 0.8
+| top 10 by similarity desc
+| project DocumentId, Title, similarity
+
+// Batch similarity across multiple embeddings using mv-expand
+let QueryEmbedding = dynamic([0.21, 0.74, 0.55]);
+EmbeddingStore
+| extend CosineSimilarity = series_cosine_similarity_fl(VectorColumn, QueryEmbedding)
+| summarize TopMatches = make_list(pack("id", RecordId, "score", CosineSimilarity), 5)
+```
+
+> 💡 **Tip**: Load `series_cosine_similarity_fl` via `.execute database script` or use the built-in `series_cosine_similarity()` function available in newer ADX/Fabric RTI clusters.
+
+### Cross-Database & Cross-Cluster Queries
+
+```kql
+// Query a table in a different database within the same cluster
+database("OtherDatabase").TableName
+| where TimeGenerated > ago(1h)
+| summarize count() by EventLevel
+
+// Join across two databases
+MyTable
+| join kind=inner (
+    database("AuditDB").AuditLogs
+    | where Action == "Delete"
+) on UserId
+
+// Query a table in a different cluster
+cluster("mycluster.westus").database("Telemetry").Events
+| where timestamp > ago(24h)
+| summarize count() by bin(timestamp, 1h)
+
+// Cross-cluster join
+let RemoteData = cluster("remote-cluster.eastus").database("Sales").Transactions
+    | where TransactionDate > ago(7d);
+LocalInventory
+| join kind=leftouter RemoteData on ProductId
+| project ProductId, LocalStock, RemoteRevenue
+```
+
+### Geospatial Enhancements
+
+KQL's geospatial capabilities have been optimized for clustering and spatial analytics at scale.
+
+```kql
+// Geo-clustering: group location data into spatial clusters
+SignalData
+| where ingestion_time() > ago(1h)
+| project Latitude, Longitude, DeviceId
+| summarize
+    DeviceCount = count(),
+    Devices = make_set(DeviceId, 100)
+    by geo_point_to_s2cell(Longitude, Latitude, 10)  // Level 10 ≈ ~1.5 km²
+
+// Calculate distance between two geo-points
+Events
+| extend DistanceKm = geo_distance_2points(
+    StartLongitude, StartLatitude,
+    EndLongitude, EndLatitude) / 1000.0
+| where DistanceKm < 50
+
+// Find points within a polygon (e.g., geofencing)
+let GeoFence = dynamic({"type":"Polygon","coordinates":[[[-122.5,47.5],[-122.0,47.5],[-122.0,47.8],[-122.5,47.8],[-122.5,47.5]]]});
+LocationEvents
+| where geo_point_in_polygon(Longitude, Latitude, GeoFence)
+| summarize count() by DeviceId
 ```
 
 ## Graph Operators & Network Analysis

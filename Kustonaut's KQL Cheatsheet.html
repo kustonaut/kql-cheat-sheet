@@ -17,6 +17,18 @@
             padding: 0;
             background: white;
         }
+
+        @media (max-width: 768px) {
+            body {
+                font-size: 14px;
+            }
+            .header h1 {
+                font-size: 20px;
+            }
+            .header p {
+                font-size: 13px;
+            }
+        }
         
         .header {
             background: linear-gradient(135deg, #0078d4, #106ebe);
@@ -41,7 +53,7 @@
         
         .container {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 15px;
             margin-bottom: 20px;
         }
@@ -81,6 +93,7 @@
             font-size: 9px;
             margin: 3px 0;
             overflow-x: auto;
+            max-width: 100%;
         }
         
         .code .keyword {
@@ -229,7 +242,7 @@
     <div class="header">
         <h1>🔍 Kustonaut's KQL Cheatsheet</h1>
         <p>A quick reference to Kuto Query Language for Eventhouse in Real-Time Intelligence, Azure Data Explorer (ADX), Azure Monitor, and Microsoft Security solutions.</p>
-        <div style="font-size: 12px; color: #222; padding: 6px; ">📝 Compiled by: <a href="https://www.linkedin.com/in/dixitakshay/" target="_blank">Akshay Dixit (kustonaut)</a> | 💻 Source Code: <a href="http://aka.ms/kustonautKQLcheatsheet" target="_blank">http://aka.ms/kustonautKQLcheatsheet</a></div>
+        <div style="font-size: 12px; color: #222; padding: 6px; ">📝 Compiled by: <a href="https://www.linkedin.com/in/dixitakshay/" target="_blank">Akshay Dixit (kustonaut)</a> | 💻 Source Code: <a href="http://aka.ms/kustonautKQLcheatsheet" target="_blank">http://aka.ms/kustonautKQLcheatsheet</a> | 📅 Last Updated: Feb 2026</div>
      </div>
     
     <!-- Introduction Section -->
@@ -649,6 +662,60 @@ Users | <span class="keyword">summarize</span> <span class="keyword">count</span
             </div>
         </div>
         
+
+        <!-- 2025 Features: Advanced Analytics & AI -->
+        <div class="section full-width">
+            <h2>🤖 Advanced Analytics &amp; AI (2025 Features)</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                <div>
+                    <h3>🔍 Vector Similarity Search</h3>
+                    <div class="code">
+<span class="comment">// Semantic / RAG search using cosine similarity</span>
+<span class="keyword">let</span> query_vector = <span class="keyword">dynamic</span>([<span class="string">0.12, 0.85, 0.33</span>]);
+DocumentEmbeddings
+| <span class="keyword">extend</span> score = series_cosine_similarity_fl(
+    Embedding, query_vector)
+| <span class="keyword">where</span> score > <span class="string">0.8</span>
+| <span class="keyword">top</span> <span class="string">10</span> <span class="keyword">by</span> score <span class="keyword">desc</span>
+| <span class="keyword">project</span> DocumentId, Title, score
+                    </div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://learn.microsoft.com/azure/data-explorer/kusto/functions-library/series-cosine-similarity-fl" target="_blank">series_cosine_similarity_fl docs</a></div>
+                </div>
+                <div>
+                    <h3>🌐 Cross-Database &amp; Cross-Cluster</h3>
+                    <div class="code">
+<span class="comment">// Different database, same cluster</span>
+<span class="keyword">database</span>(<span class="string">"OtherDB"</span>).TableName
+| <span class="keyword">where</span> TimeGenerated > <span class="keyword">ago</span>(<span class="string">1h</span>)
+
+<span class="comment">// Different cluster</span>
+<span class="keyword">cluster</span>(<span class="string">"mycluster.westus"</span>)
+  .<span class="keyword">database</span>(<span class="string">"Telemetry"</span>).Events
+| <span class="keyword">summarize</span> <span class="keyword">count</span>() <span class="keyword">by</span>
+    <span class="keyword">bin</span>(timestamp, <span class="string">1h</span>)
+                    </div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://learn.microsoft.com/azure/data-explorer/kusto/query/cross-cluster-or-database-queries" target="_blank">Cross-cluster query docs</a></div>
+                </div>
+                <div>
+                    <h3>🗺️ Geospatial Clustering</h3>
+                    <div class="code">
+<span class="comment">// Cluster points into S2 cells</span>
+SignalData
+| <span class="keyword">project</span> Latitude, Longitude, DeviceId
+| <span class="keyword">summarize</span>
+    DeviceCount = <span class="keyword">count</span>(),
+    Devices = <span class="keyword">make_set</span>(DeviceId, <span class="string">100</span>)
+  <span class="keyword">by</span> <span class="keyword">geo_point_to_s2cell</span>(
+    Longitude, Latitude, <span class="string">10</span>)
+
+<span class="comment">// Distance between two points (km)</span>
+| <span class="keyword">extend</span> DistKm = <span class="keyword">geo_distance_2points</span>(
+    Lon1, Lat1, Lon2, Lat2) / <span class="string">1000.0</span>
+                    </div>
+                    <div style="font-size: 8px; color: #666; margin: 2px 0;">📖 <a href="https://learn.microsoft.com/azure/data-explorer/kusto/query/geo-point-to-s2cell-function" target="_blank">geo_point_to_s2cell docs</a></div>
+                </div>
+            </div>
+        </div>
 
         <!-- Quick Reference -->
         <div class="section full-width">
